@@ -1,0 +1,100 @@
+import { categoryFromTafPeriod } from "./flightCategory";
+import type {
+  FlightCategory,
+  TafData,
+  TafHorizonKey,
+  TafPeriod,
+  TafSnapshot,
+} from "./types";
+
+export const HORIZON_HOURS: { key: TafHorizonKey; hours: number; label: string }[] = [
+  { key: "dep", hours: 0, label: "TAF @ dep" },
+  { key: "plus6", hours: 6, label: "+6h" },
+  { key: "plus12", hours: 12, label: "+12h" },
+  { key: "plus18", hours: 18, label: "+18h" },
+  { key: "plus24", hours: 24, label: "+24h" },
+];
+
+export function horizonTimes(departureUtc: Date) {
+  return HORIZON_HOURS.map((h) => ({
+    key: h.key,
+    label: h.label,
+    atUtc: new Date(departureUtc.getTime() + h.hours * 3600_000).toISOString(),
+    hours: h.hours,
+  }));
+}
+
+/** Find the TAF forecast period governing a given instant (unix seconds). */
+export function periodAt(taf: TafData | null, atUnixSec: number): TafPeriod | null {
+  if (!taf?.fcsts?.length) return null;
+  // Prefer non-PROB periods that contain the time; BECMG uses timeFrom→timeTo with timeBec
+  const containing = taf.fcsts.filter(
+    (p) => p.timeFrom <= atUnixSec && atUnixSec < p.timeTo
+  );
+  if (!containing.length) {
+    // If outside all periods, pick nearest previous
+    const prev = [...taf.fcsts]
+      .filter((p) => p.timeFrom <= atUnixSec)
+      .sort((a, b) => b.timeFrom - a.timeFrom)[0];
+    return prev || null;
+  }
+  // Prefer base / FM / BECMG over PROB when overlapping
+  const nonProb = containing.filter((p) => !p.probability);
+  const pool = nonProb.length ? nonProb : containing;
+  // Most recently started
+  return pool.sort((a, b) => b.timeFrom - a.timeFrom)[0];
+}
+
+export function summarizePeriod(period: TafPeriod | null): string {
+  if (!period) return "No TAF period for this horizon";
+  const bits: string[] = [];
+  if (period.fcstChange) {
+    bits.push(
+      period.probability
+        ? `PROB${period.probability} ${period.fcstChange}`
+        : period.fcstChange
+    );
+  }
+  const wind =
+    period.wdir != null && period.wspd != null
+      ? `${period.wdir === "VRB" ? "VRB" : String(period.wdir).padStart(3, "0")}${String(period.wspd).padStart(2, "0")}${
+          period.wgst ? `G${period.wgst}` : ""
+        }KT`
+      : null;
+  if (wind) bits.push(wind);
+  if (period.visib != null) {
+    bits.push(typeof period.visib === "number" ? `${period.visib}SM` : String(period.visib));
+  }
+  if (period.wxString) bits.push(period.wxString);
+  if (period.clouds?.length) {
+    bits.push(
+      period.clouds
+        .map((c) => `${c.cover}${c.base != null ? String(c.base).padStart(3, "0") : ""}`)
+        .join(" ")
+    );
+  } else if (period.vertVis != null) {
+    bits.push(`VV${String(period.vertVis).padStart(3, "0")}`);
+  }
+  return bits.join(" ") || "Conditions as forecast";
+}
+
+export function buildTafSnapshots(
+  taf: TafData | null,
+  departureUtc: Date
+): Record<TafHorizonKey, TafSnapshot | null> {
+  const out = {} as Record<TafHorizonKey, TafSnapshot | null>;
+  for (const h of horizonTimes(departureUtc)) {
+    const at = new Date(h.atUtc);
+    const atSec = Math.floor(at.getTime() / 1000);
+    const period = periodAt(taf, atSec);
+    const flightCategory: FlightCategory = categoryFromTafPeriod(period);
+    out[h.key] = {
+      horizon: h.key,
+      atUtc: h.atUtc,
+      period,
+      flightCategory,
+      summary: summarizePeriod(period),
+    };
+  }
+  return out;
+}

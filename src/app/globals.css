@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --cockpit-bg: #0b1220;
+  --cockpit-panel: #0f172a;
+  --cockpit-cyan: #22d3ee;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  min-height: 100dvh;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(34, 211, 238, 0.08), transparent 50%),
+    radial-gradient(800px 400px at 100% 0%, rgba(16, 185, 129, 0.06), transparent 45%),
+    var(--cockpit-bg);
+  color: #e2e8f0;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Comfortable mobile form controls */
+input,
+button,
+textarea {
+  font-size: 16px; /* reduce iOS zoom on focus */
+}
+
+@media (min-width: 640px) {
+  input,
+  button,
+  textarea {
+    font-size: inherit;
+  }
+}
+
+pre {
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Hide spin buttons on number inputs for cleaner cockpit look */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}

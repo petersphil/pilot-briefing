@@ -1,12 +1,12 @@
+import { nativeAwareFetch } from "./http";
 import type { MetarData, TafData } from "./types";
 
-const AWC_BASE = process.env.AWC_API_BASE || "https://aviationweather.gov/api/data";
+const AWC_BASE = "https://aviationweather.gov/api/data";
 const UA =
-  process.env.AWC_USER_AGENT ||
   "PilotBriefing/1.0 (+https://github.com/petersphil/pilot-briefing; contact via GitHub)";
 
 async function awcFetch(path: string): Promise<Response> {
-  return fetch(`${AWC_BASE}${path}`, {
+  return nativeAwareFetch(`${AWC_BASE}${path}`, {
     headers: {
       Accept: "application/json",
       "User-Agent": UA,
@@ -55,4 +55,4 @@ export async function fetchTafs(icaos: string[]): Promise<Map<string, TafData>> 
  */
 export const COVERAGE_NOTE =
   "METAR/TAF via aviationweather.gov (FAA AWC) — worldwide station coverage including Canada and Caribbean. " +
-  "NOTAMs: Canadian airports (iso_country CA) via NAV CANADA CFPS (no key); all other airports via SkyLink on RapidAPI (RAPIDAPI_KEY or SKYLINK_RAPIDAPI_KEY).";
+  "NOTAMs: Canadian airports (iso_country CA) via NAV CANADA CFPS (no key); all other airports via SkyLink on RapidAPI (RAPIDAPI_KEY or device Settings key).";

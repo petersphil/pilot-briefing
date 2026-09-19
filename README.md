@@ -140,3 +140,15 @@ Primary groups only (others hidden):
 ## License
 
 MIT — use at your own operational risk. Always cross-check with official briefing sources before flight.
+
+
+## Android APK (sideload)
+
+Cannot reach WHM? Install a **debug APK** that runs briefing logic on the phone (Capacitor + native HTTP).
+
+- See **[README-android.md](./README-android.md)** for install steps, RapidAPI Settings, and local Android Studio builds.
+- GitHub Actions workflow **Android debug APK** (`deploy/android-apk.yml` (copy to `.github/workflows/` — see README-android)) builds and uploads `app-debug.apk` on push to `main` or manual **Run workflow**.
+- In the app: **Settings** → paste RapidAPI key for US/Caribbean NOTAMs (stored on device). Canadian NOTAMs need no key.
+
+Server deploy (`npm run build` / standalone) is unchanged for future WHM use.
+

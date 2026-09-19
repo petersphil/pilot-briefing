@@ -1,5 +1,12 @@
 import { lookupIcao } from "./airports";
+import { nativeAwareFetch } from "./http";
 import type { NotamGroup, NotamItem } from "./types";
+
+/** Options for client or server callers (avoid raw process.env on client). */
+export interface NotamFetchOptions {
+  rapidApiKey?: string;
+  enableSampleNotams?: boolean;
+}
 
 /** Ordered groups for UI. */
 export const NOTAM_GROUP_ORDER: NotamGroup[] = [
@@ -97,7 +104,6 @@ function toNotamItem(
 export function isCanadianAirport(icao: string): boolean {
   const a = lookupIcao(icao);
   if (a?.country) return a.country.toUpperCase() === "CA";
-  // Synthesized / unknown: C-prefix ICAO is usually Canada (except rare US CA##)
   return /^C[A-Z0-9]{3}$/i.test(icao) && !/^CA\d{2}$/i.test(icao);
 }
 
@@ -153,7 +159,7 @@ async function fetchNavCanadaNotams(icao: string): Promise<NotamItem[]> {
   url.searchParams.set("alpha", "notam");
   url.searchParams.set("notam_choice", "default");
 
-  const res = await fetch(url.toString(), {
+  const res = await nativeAwareFetch(url.toString(), {
     headers: {
       Accept: "application/json",
       "User-Agent": "Mozilla/5.0",
@@ -168,12 +174,19 @@ async function fetchNavCanadaNotams(icao: string): Promise<NotamItem[]> {
   return normalizeNavCanadaItems(icao, data);
 }
 
-function getRapidApiKey(): string | undefined {
+/** Server-only helper: read RapidAPI key from env when options omit it. */
+export function rapidApiKeyFromEnv(): string | undefined {
+  if (typeof process === "undefined" || !process.env) return undefined;
   return (
     process.env.RAPIDAPI_KEY?.trim() ||
     process.env.SKYLINK_RAPIDAPI_KEY?.trim() ||
     undefined
   );
+}
+
+export function enableSampleNotamsFromEnv(): boolean {
+  if (typeof process === "undefined" || !process.env) return false;
+  return process.env.ENABLE_SAMPLE_NOTAMS === "1";
 }
 
 interface SkyLinkNotamEntry {
@@ -201,7 +214,6 @@ function normalizeSkyLinkItems(icao: string, payload: unknown): NotamItem[] {
       continue;
     }
     const e = entry as SkyLinkNotamEntry;
-    // Prefer body for classification/display; fall back to full ICAO raw
     const text = (e.body && String(e.body).trim()) || (e.raw && String(e.raw).trim()) || "";
     if (!text) continue;
     const id = String(
@@ -224,7 +236,7 @@ async function fetchSkyLinkNotams(icao: string, apiKey: string): Promise<NotamIt
   const url = `https://skylink-api.p.rapidapi.com/v3/notams/${encodeURIComponent(
     icao.toUpperCase()
   )}`;
-  const res = await fetch(url, {
+  const res = await nativeAwareFetch(url, {
     headers: {
       Accept: "application/json",
       "x-rapidapi-key": apiKey,
@@ -240,7 +252,7 @@ async function fetchSkyLinkNotams(icao: string, apiKey: string): Promise<NotamIt
   return normalizeSkyLinkItems(icao, data);
 }
 
-/** Sample NOTAMs for UI/dev when ENABLE_SAMPLE_NOTAMS=1 */
+/** Sample NOTAMs for UI/dev when enableSampleNotams */
 function sampleNotams(icao: string): NotamItem[] {
   const samples = [
     `${icao} RWY 16/34 CLSD DUE TO CONSTRUCTION 1200-2200 DAILY`,
@@ -248,8 +260,8 @@ function sampleNotams(icao: string): NotamItem[] {
     `${icao} FUEL 100LL NOT AVBL`,
     `${icao} ILS RWY 28 U/S`,
     `${icao} ALSF-2 RWY 10 OUT OF SERVICE`,
-    `${icao} CRANE 1NM NE OF ARPT 250FT AGL`, // excluded
-    `${icao} BIRD ACTIVITY IN VICINITY`, // excluded
+    `${icao} CRANE 1NM NE OF ARPT 250FT AGL`,
+    `${icao} BIRD ACTIVITY IN VICINITY`,
   ];
   return samples.map((raw, i) => {
     const excluded = shouldExcludeNotam(raw);
@@ -271,12 +283,17 @@ function keepPrimary(list: NotamItem[]): NotamItem[] {
 }
 
 export async function fetchNotams(
-  icaos: string[]
+  icaos: string[],
+  options: NotamFetchOptions = {}
 ): Promise<{ items: Map<string, NotamItem[]>; source: string; warnings: string[] }> {
   const items = new Map<string, NotamItem[]>();
   const warnings: string[] = [];
-  const useSamples = process.env.ENABLE_SAMPLE_NOTAMS === "1";
-  const rapidKey = getRapidApiKey();
+  const useSamples =
+    options.enableSampleNotams ?? enableSampleNotamsFromEnv();
+  const rapidKey =
+    (options.rapidApiKey && options.rapidApiKey.trim()) ||
+    // Only fall back to env on server; client must pass key via options
+    (typeof window === "undefined" ? rapidApiKeyFromEnv() : undefined);
   const unique = Array.from(new Set(icaos.map((c) => c.toUpperCase())));
 
   const caIcaos = unique.filter(isCanadianAirport);
@@ -284,16 +301,15 @@ export async function fetchNotams(
 
   const sourcesUsed = new Set<string>();
 
-  // Sample-only mode when no live path for non-CA and samples enabled for whole set
   if (useSamples && !rapidKey && otherIcaos.length && !caIcaos.length) {
     for (const icao of unique) items.set(icao, keepPrimary(sampleNotams(icao)));
-    warnings.push("Showing SAMPLE NOTAMs (ENABLE_SAMPLE_NOTAMS=1). Not live data.");
+    warnings.push("Showing SAMPLE NOTAMs (enableSampleNotams). Not live data.");
     return { items, source: "sample", warnings };
   }
 
   if (otherIcaos.length && !rapidKey) {
     warnings.push(
-      "NOTAMs: set RAPIDAPI_KEY (or SKYLINK_RAPIDAPI_KEY) for SkyLink NOTAMs on non-Canadian airports."
+      "NOTAMs: enter a RapidAPI key in Settings (or set RAPIDAPI_KEY on the server) for SkyLink NOTAMs on non-Canadian airports."
     );
   }
 
@@ -334,13 +350,11 @@ export async function fetchNotams(
   );
 
   if (useSamples && sourcesUsed.has("sample") && !warnings.some((w) => w.includes("SAMPLE"))) {
-    warnings.push("Showing SAMPLE NOTAMs for some airports (ENABLE_SAMPLE_NOTAMS=1). Not live data.");
+    warnings.push("Showing SAMPLE NOTAMs for some airports. Not live data.");
   }
 
   const source =
-    sourcesUsed.size === 0
-      ? "none"
-      : Array.from(sourcesUsed).sort().join("+");
+    sourcesUsed.size === 0 ? "none" : Array.from(sourcesUsed).sort().join("+");
 
   return { items, source, warnings };
 }

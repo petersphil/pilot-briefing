@@ -1,11 +1,16 @@
 import { resolveLeg, sortWestToEast } from "./airports";
 import { categoryFromMetar } from "./flightCategory";
-import { groupNotams, fetchNotams } from "./notams";
+import { groupNotams, fetchNotams, type NotamFetchOptions } from "./notams";
 import { buildTafSnapshots, horizonTimes } from "./taf";
 import type { BriefingRequest, BriefingResponse, AirportBriefing } from "./types";
 import { COVERAGE_NOTE, fetchMetars, fetchTafs } from "./weather";
 
-export async function buildBriefing(req: BriefingRequest): Promise<BriefingResponse> {
+export type BriefingOptions = NotamFetchOptions;
+
+export async function buildBriefing(
+  req: BriefingRequest,
+  options: BriefingOptions = {}
+): Promise<BriefingResponse> {
   const warnings: string[] = [];
   const { airports: resolved, errors } = resolveLeg(
     req.departure,
@@ -43,7 +48,7 @@ export async function buildBriefing(req: BriefingRequest): Promise<BriefingRespo
       warnings.push(`TAF fetch failed: ${e.message}`);
       return new Map();
     }),
-    fetchNotams(icaos),
+    fetchNotams(icaos, options),
   ]);
   warnings.push(...notamResult.warnings);
 

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Pilot Briefing</string>
+    <string name="title_activity_main">Pilot Briefing</string>
+    <string name="package_name">ca.empressaero.pilotbriefing</string>
+    <string name="custom_url_scheme">ca.empressaero.pilotbriefing</string>
+</resources>

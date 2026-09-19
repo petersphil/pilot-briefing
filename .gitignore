@@ -39,3 +39,18 @@ next-env.d.ts
 .env.local
 .env*.local
 !.env.example
+
+# Capacitor / Android local
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/captures/
+android/.idea/
+*.apk
+*.aab
+*.keystore
+!android/app/debug.keystore
+
+# Capacitor stash during export
+src/app/_api_server_only_stash/

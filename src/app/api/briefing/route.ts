@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildBriefing } from "@/lib/briefing";
+import { enableSampleNotamsFromEnv, rapidApiKeyFromEnv } from "@/lib/notams";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,13 +29,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "departureUtc is required (ISO UTC)" }, { status: 400 });
     }
 
-    const result = await buildBriefing({
-      departure,
-      destination,
-      alternates,
-      departureUtc,
-      enrouteMinutes: Number.isFinite(enrouteMinutes) ? enrouteMinutes : 0,
-    });
+    const result = await buildBriefing(
+      {
+        departure,
+        destination,
+        alternates,
+        departureUtc,
+        enrouteMinutes: Number.isFinite(enrouteMinutes) ? enrouteMinutes : 0,
+      },
+      {
+        rapidApiKey: rapidApiKeyFromEnv(),
+        enableSampleNotams: enableSampleNotamsFromEnv(),
+      }
+    );
 
     return NextResponse.json(result);
   } catch (e) {

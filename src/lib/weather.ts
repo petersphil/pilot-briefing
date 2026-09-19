@@ -55,4 +55,4 @@ export async function fetchTafs(icaos: string[]): Promise<Map<string, TafData>> 
  */
 export const COVERAGE_NOTE =
   "METAR/TAF via aviationweather.gov (FAA AWC) — worldwide station coverage including Canada and Caribbean. " +
-  "NOTAMs: US via optional FAA NOTAM API credentials; Canadian / many Caribbean NOTAMs are not fully available without NAV CANADA or local AIS sources.";
+  "NOTAMs: Canadian airports (iso_country CA) via NAV CANADA CFPS (no key); all other airports via SkyLink on RapidAPI (RAPIDAPI_KEY or SKYLINK_RAPIDAPI_KEY).";

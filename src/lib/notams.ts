@@ -1,3 +1,4 @@
+import { lookupIcao } from "./airports";
 import type { NotamGroup, NotamItem } from "./types";
 
 /** Ordered groups for UI. */
@@ -71,103 +72,172 @@ export function groupNotams(items: NotamItem[]): Record<NotamGroup, NotamItem[]>
   return out;
 }
 
-interface FaaNotamCore {
-  id?: string;
-  notamNumber?: string;
-  icaoLocation?: string;
-  domesticLocation?: string;
-  text?: string;
-  traditionalMessage?: string;
-  plainTextMessage?: string;
-  plainLanguage?: string;
-  effectiveStart?: string;
-  effectiveEnd?: string;
-  startDate?: string;
-  endDate?: string;
+function toNotamItem(
+  icao: string,
+  id: string,
+  text: string,
+  start: string | null,
+  end: string | null
+): NotamItem {
+  const raw = String(text || "").trim();
+  const excluded = shouldExcludeNotam(raw);
+  return {
+    id,
+    icao,
+    raw,
+    text: raw,
+    group: classifyNotam(raw),
+    start,
+    end,
+    excluded,
+  };
 }
 
-function normalizeFaaItems(icao: string, payload: unknown): NotamItem[] {
+/** Airport.country is ISO country (OurAirports); treat as iso_country. */
+export function isCanadianAirport(icao: string): boolean {
+  const a = lookupIcao(icao);
+  if (a?.country) return a.country.toUpperCase() === "CA";
+  // Synthesized / unknown: C-prefix ICAO is usually Canada (except rare US CA##)
+  return /^C[A-Z0-9]{3}$/i.test(icao) && !/^CA\d{2}$/i.test(icao);
+}
+
+function parseNavCanadaText(text: unknown): string {
+  if (text == null) return "";
+  if (typeof text !== "string") return String(text);
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{")) return trimmed;
+  try {
+    const obj = JSON.parse(trimmed) as {
+      english?: string | null;
+      raw?: string | null;
+      french?: string | null;
+    };
+    return (
+      (obj.english && String(obj.english).trim()) ||
+      (obj.raw && String(obj.raw).trim()) ||
+      (obj.french && String(obj.french).trim()) ||
+      trimmed
+    );
+  } catch {
+    return trimmed;
+  }
+}
+
+function normalizeNavCanadaItems(icao: string, payload: unknown): NotamItem[] {
   const items: NotamItem[] = [];
-  const root = payload as Record<string, unknown>;
-  const list =
-    (root?.notamList as unknown[]) ||
-    (root?.items as unknown[]) ||
-    (Array.isArray(payload) ? (payload as unknown[]) : []);
+  const root = payload as { data?: unknown[] };
+  const list = Array.isArray(root?.data) ? root.data : [];
 
   for (const entry of list) {
     const e = entry as Record<string, unknown>;
-    const core = (e.properties || e.notam || e) as FaaNotamCore;
-    const text =
-      core.plainTextMessage ||
-      core.plainLanguage ||
-      core.text ||
-      core.traditionalMessage ||
-      (typeof e === "string" ? e : "") ||
-      "";
+    if (e.type && e.type !== "notam") continue;
+    const text = parseNavCanadaText(e.text);
     if (!text) continue;
-    const raw = String(text);
-    const excluded = shouldExcludeNotam(raw);
-    const group = classifyNotam(raw);
-    items.push({
-      id: String(core.id || core.notamNumber || `${icao}-${items.length + 1}`),
-      icao,
-      raw,
-      text: raw,
-      group,
-      start: core.effectiveStart || core.startDate || null,
-      end: core.effectiveEnd || core.endDate || null,
-      excluded,
-    });
+    const id = String(e.pk || e.id || `${icao}-${items.length + 1}`);
+    items.push(
+      toNotamItem(
+        icao,
+        id,
+        text,
+        e.startValidity != null ? String(e.startValidity) : null,
+        e.endValidity != null ? String(e.endValidity) : null
+      )
+    );
   }
   return items;
 }
 
-async function fetchFaaNotamsForIcao(icao: string): Promise<NotamItem[]> {
-  const clientId = process.env.FAA_NOTAM_CLIENT_ID;
-  const clientSecret = process.env.FAA_NOTAM_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
-    return [];
-  }
-
-  const tokenUrl =
-    process.env.FAA_NOTAM_TOKEN_URL ||
-    "https://external-api.faa.gov/oauth2/token";
-  const apiBase =
-    process.env.FAA_NOTAM_API_BASE || "https://external-api.faa.gov/notamapi/v1";
-
-  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-  const tokenRes = await fetch(tokenUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${basic}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: "grant_type=client_credentials",
-  });
-  if (!tokenRes.ok) {
-    throw new Error(`FAA NOTAM token HTTP ${tokenRes.status}`);
-  }
-  const tokenJson = (await tokenRes.json()) as { access_token?: string };
-  if (!tokenJson.access_token) throw new Error("FAA NOTAM token missing");
-
-  const url = new URL(`${apiBase}/notams`);
-  url.searchParams.set("icaoLocation", icao);
-  url.searchParams.set("pageSize", "200");
-  url.searchParams.set("pageNum", "1");
-  url.searchParams.set("responseFormat", "aidap");
+async function fetchNavCanadaNotams(icao: string): Promise<NotamItem[]> {
+  const url = new URL("https://plan.navcanada.ca/weather/api/alpha/");
+  url.searchParams.set("site", icao.toUpperCase());
+  url.searchParams.set("alpha", "notam");
+  url.searchParams.set("notam_choice", "default");
 
   const res = await fetch(url.toString(), {
     headers: {
-      Authorization: `Bearer ${tokenJson.access_token}`,
       Accept: "application/json",
+      "User-Agent": "Mozilla/5.0",
+      Referer: "https://plan.navcanada.ca/wxrecall/",
     },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`Nav Canada NOTAM HTTP ${res.status} for ${icao}`);
+  }
+  const data = await res.json();
+  return normalizeNavCanadaItems(icao, data);
+}
+
+function getRapidApiKey(): string | undefined {
+  return (
+    process.env.RAPIDAPI_KEY?.trim() ||
+    process.env.SKYLINK_RAPIDAPI_KEY?.trim() ||
+    undefined
+  );
+}
+
+interface SkyLinkNotamEntry {
+  raw?: string;
+  body?: string;
+  notam_id?: string | null;
+  notam_id_domestic?: string | null;
+  effective?: string | null;
+  expiration?: string | null;
+  location?: string | null;
+}
+
+function normalizeSkyLinkItems(icao: string, payload: unknown): NotamItem[] {
+  const items: NotamItem[] = [];
+  const root = payload as Record<string, unknown>;
+  const list =
+    (root?.notams as unknown[]) ||
+    (root?.notamList as unknown[]) ||
+    (Array.isArray(payload) ? (payload as unknown[]) : []);
+
+  for (const entry of list) {
+    if (typeof entry === "string") {
+      if (!entry.trim()) continue;
+      items.push(toNotamItem(icao, `${icao}-${items.length + 1}`, entry, null, null));
+      continue;
+    }
+    const e = entry as SkyLinkNotamEntry;
+    // Prefer body for classification/display; fall back to full ICAO raw
+    const text = (e.body && String(e.body).trim()) || (e.raw && String(e.raw).trim()) || "";
+    if (!text) continue;
+    const id = String(
+      e.notam_id || e.notam_id_domestic || `${icao}-${items.length + 1}`
+    );
+    items.push(
+      toNotamItem(
+        icao,
+        id,
+        text,
+        e.effective != null ? String(e.effective) : null,
+        e.expiration != null ? String(e.expiration) : null
+      )
+    );
+  }
+  return items;
+}
+
+async function fetchSkyLinkNotams(icao: string, apiKey: string): Promise<NotamItem[]> {
+  const url = `https://skylink-api.p.rapidapi.com/v3/notams/${encodeURIComponent(
+    icao.toUpperCase()
+  )}`;
+  const res = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      "x-rapidapi-key": apiKey,
+      "x-rapidapi-host": "skylink-api.p.rapidapi.com",
+    },
+    cache: "no-store",
   });
   if (res.status === 204) return [];
   if (!res.ok) {
-    throw new Error(`FAA NOTAM HTTP ${res.status} for ${icao}`);
+    throw new Error(`SkyLink NOTAM HTTP ${res.status} for ${icao}`);
   }
   const data = await res.json();
-  return normalizeFaaItems(icao, data);
+  return normalizeSkyLinkItems(icao, data);
 }
 
 /** Sample NOTAMs for UI/dev when ENABLE_SAMPLE_NOTAMS=1 */
@@ -196,40 +266,81 @@ function sampleNotams(icao: string): NotamItem[] {
   });
 }
 
+function keepPrimary(list: NotamItem[]): NotamItem[] {
+  return list.filter((n) => !n.excluded);
+}
+
 export async function fetchNotams(
   icaos: string[]
 ): Promise<{ items: Map<string, NotamItem[]>; source: string; warnings: string[] }> {
   const items = new Map<string, NotamItem[]>();
   const warnings: string[] = [];
-  const hasCreds = !!(process.env.FAA_NOTAM_CLIENT_ID && process.env.FAA_NOTAM_CLIENT_SECRET);
   const useSamples = process.env.ENABLE_SAMPLE_NOTAMS === "1";
+  const rapidKey = getRapidApiKey();
+  const unique = Array.from(new Set(icaos.map((c) => c.toUpperCase())));
 
-  if (!hasCreds && !useSamples) {
-    warnings.push(
-      "NOTAMs: set FAA_NOTAM_CLIENT_ID and FAA_NOTAM_CLIENT_SECRET for US FAA NOTAM API access. Canadian NOTAMs require NAV CANADA (not bundled)."
-    );
-    for (const icao of icaos) items.set(icao, []);
-    return { items, source: "none", warnings };
-  }
+  const caIcaos = unique.filter(isCanadianAirport);
+  const otherIcaos = unique.filter((c) => !isCanadianAirport(c));
 
-  if (useSamples && !hasCreds) {
-    for (const icao of icaos) items.set(icao, sampleNotams(icao));
+  const sourcesUsed = new Set<string>();
+
+  // Sample-only mode when no live path for non-CA and samples enabled for whole set
+  if (useSamples && !rapidKey && otherIcaos.length && !caIcaos.length) {
+    for (const icao of unique) items.set(icao, keepPrimary(sampleNotams(icao)));
     warnings.push("Showing SAMPLE NOTAMs (ENABLE_SAMPLE_NOTAMS=1). Not live data.");
     return { items, source: "sample", warnings };
   }
 
-  for (const icao of icaos) {
-    try {
-      const list = await fetchFaaNotamsForIcao(icao);
-      // Filter: keep classified groups; drop excluded + pure other from primary
-      items.set(
-        icao,
-        list.filter((n) => !n.excluded)
-      );
-    } catch (e) {
-      warnings.push(`NOTAM fetch failed for ${icao}: ${(e as Error).message}`);
-      items.set(icao, []);
-    }
+  if (otherIcaos.length && !rapidKey) {
+    warnings.push(
+      "NOTAMs: set RAPIDAPI_KEY (or SKYLINK_RAPIDAPI_KEY) for SkyLink NOTAMs on non-Canadian airports."
+    );
   }
-  return { items, source: "faa-notam-api", warnings };
+
+  await Promise.all(
+    unique.map(async (icao) => {
+      try {
+        if (isCanadianAirport(icao)) {
+          const list = await fetchNavCanadaNotams(icao);
+          items.set(icao, keepPrimary(list));
+          sourcesUsed.add("navcanada-cfps");
+          return;
+        }
+
+        if (rapidKey) {
+          const list = await fetchSkyLinkNotams(icao, rapidKey);
+          items.set(icao, keepPrimary(list));
+          sourcesUsed.add("skylink-rapidapi");
+          return;
+        }
+
+        if (useSamples) {
+          items.set(icao, keepPrimary(sampleNotams(icao)));
+          sourcesUsed.add("sample");
+          return;
+        }
+
+        items.set(icao, []);
+      } catch (e) {
+        warnings.push(`NOTAM fetch failed for ${icao}: ${(e as Error).message}`);
+        if (useSamples) {
+          items.set(icao, keepPrimary(sampleNotams(icao)));
+          sourcesUsed.add("sample");
+        } else {
+          items.set(icao, []);
+        }
+      }
+    })
+  );
+
+  if (useSamples && sourcesUsed.has("sample") && !warnings.some((w) => w.includes("SAMPLE"))) {
+    warnings.push("Showing SAMPLE NOTAMs for some airports (ENABLE_SAMPLE_NOTAMS=1). Not live data.");
+  }
+
+  const source =
+    sourcesUsed.size === 0
+      ? "none"
+      : Array.from(sourcesUsed).sort().join("+");
+
+  return { items, source, warnings };
 }

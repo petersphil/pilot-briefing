@@ -47,10 +47,16 @@ npm start                    # listens 0.0.0.0:${PORT:-3000}
 |----------|---------|
 | `AWC_API_BASE` | Override AWC API root (default `https://aviationweather.gov/api/data`) |
 | `AWC_USER_AGENT` | Custom User-Agent (AWC asks for one) |
-| `FAA_NOTAM_CLIENT_ID` / `FAA_NOTAM_CLIENT_SECRET` | Live **US** NOTAMs via FAA External API |
-| `FAA_NOTAM_TOKEN_URL` / `FAA_NOTAM_API_BASE` | Override FAA OAuth / API hosts if needed |
-| `ENABLE_SAMPLE_NOTAMS=1` | Dev-only sample NOTAMs when FAA creds absent |
+| `RAPIDAPI_KEY` | SkyLink NOTAMs via RapidAPI (**required** for non-Canadian airports) |
+| `SKYLINK_RAPIDAPI_KEY` | Alternate name for the same SkyLink RapidAPI key |
+| `ENABLE_SAMPLE_NOTAMS=1` | Dev-only sample NOTAMs when SkyLink key is absent (local UI) |
 | `PORT` | Production listen port (default 3000) |
+
+Canadian NOTAMs use **NAV CANADA CFPS** (`plan.navcanada.ca`) and need **no API key**.
+
+#### cPanel (wx.empressaero.com)
+
+On the Node.js application for **wx.empressaero.com**, set **`RAPIDAPI_KEY`** in the app environment (cPanel → Setup Node.js App → Environment variables), then restart the app so non-CA NOTAMs resolve via SkyLink.
 
 ## Deploy on a VPS (nginx + Node)
 
@@ -58,7 +64,7 @@ This app is **not** a static export — API routes must run on Node.
 
 1. Install Node 20+ on the VPS.  
 2. Clone the repo, `npm ci && npm run build`.  
-3. Copy `.env.example` → `.env.local` (or systemd `Environment=`) and set NOTAM credentials if you have them.  
+3. Copy `.env.example` → `.env.local` (or systemd / cPanel `Environment=`) and set `RAPIDAPI_KEY` for SkyLink (non-CA NOTAMs).  
 4. Run with the standalone server (after `output: "standalone"` build):
 
 ```bash
@@ -100,7 +106,7 @@ Static hosting alone (S3/Netlify static) will **not** work without a separate AP
 | METAR | FAA AWC `/api/data/metar` | Worldwide stations (CA & Caribbean included where reported) |
 | TAF | FAA AWC `/api/data/taf` | Same |
 | Airports | OurAirports subset in `data/airports.json` | CA, US, Caribbean ISOs |
-| NOTAMs | FAA NOTAM API (optional credentials) | **US** when configured; see limitations |
+| NOTAMs | NAV CANADA CFPS (CA) · SkyLink RapidAPI (other) | **CA** no key; **US/Caribbean/other** need `RAPIDAPI_KEY` |
 
 Rebuild airports:
 
@@ -122,9 +128,9 @@ Primary groups only (others hidden):
 
 ## Known limitations
 
-- **Canadian NOTAMs** are not available from the FAA NOTAM API. NAV CANADA / CFPS (or another AIS feed) is required for complete Canadian briefing NOTAMs — this pilot does not bundle that subscription.  
-- **Caribbean NOTAM** completeness varies; many FIRs are outside FAA coverage.  
-- Without `FAA_NOTAM_*` credentials, the NOTAM tab is empty (or sample data if `ENABLE_SAMPLE_NOTAMS=1`).  
+- **Canadian NOTAMs** come from NAV CANADA CFPS (public weather/alpha API). Coverage follows what CFPS returns for the site ICAO.  
+- **Non-Canadian NOTAMs** (US, Caribbean, etc.) require a SkyLink RapidAPI key (`RAPIDAPI_KEY` or `SKYLINK_RAPIDAPI_KEY`). Without it, those airports show a warning and an empty NOTAM list (or sample data if `ENABLE_SAMPLE_NOTAMS=1`).  
+- **Caribbean / overseas** completeness depends on SkyLink upstream coverage.  
 - AWC rate limit ≈ **100 req/min**; this app batches METAR/TAF by airport list.  
 - OurAirports rows can lag official renames; a few IATA↔ICAO overrides are applied in `scripts/build-airports.py`.  
 - TAF horizon snapshots pick the governing forecast period at dep/+6/+12/+18/+24 UTC; PROB groups are deprioritized when a base period overlaps.  

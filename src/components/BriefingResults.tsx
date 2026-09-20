@@ -133,14 +133,27 @@ function TafCards({
             {snap ? (
               <>
                 <p className="mt-3 text-sm font-medium text-slate-100">{snap.summary}</p>
-                {b.taf?.rawTAF && (
+                {!snap.period && (snap.rawFragment || b.taf?.rawTAF) ? (
+                  <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-slate-200">
+                    {snap.rawFragment || b.taf?.rawTAF}
+                  </pre>
+                ) : b.taf?.rawTAF ? (
                   <details className="mt-2">
                     <summary className="cursor-pointer text-[11px] text-cyan-400/80">Full TAF</summary>
                     <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[11px] text-slate-400">
                       {b.taf.rawTAF}
                     </pre>
                   </details>
-                )}
+                ) : null}
+              </>
+            ) : b.taf?.rawTAF ? (
+              <>
+                <p className="mt-3 text-xs text-amber-200/90">
+                  Structured TAF horizons unavailable — raw TAF:
+                </p>
+                <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-slate-200">
+                  {b.taf.rawTAF}
+                </pre>
               </>
             ) : (
               <p className="mt-3 text-sm text-slate-500">No TAF for this horizon</p>

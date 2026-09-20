@@ -83,6 +83,7 @@ export function buildTafSnapshots(
   departureUtc: Date
 ): Record<TafHorizonKey, TafSnapshot | null> {
   const out = {} as Record<TafHorizonKey, TafSnapshot | null>;
+  const rawOnly = Boolean(taf?.rawTAF) && !taf?.fcsts?.length;
   for (const h of horizonTimes(departureUtc)) {
     const at = new Date(h.atUtc);
     const atSec = Math.floor(at.getTime() / 1000);
@@ -93,7 +94,10 @@ export function buildTafSnapshots(
       atUtc: h.atUtc,
       period,
       flightCategory,
-      summary: summarizePeriod(period),
+      summary: rawOnly
+        ? "Raw TAF only (AWC structured periods unavailable — showing NOAA tgftp text)"
+        : summarizePeriod(period),
+      rawFragment: rawOnly ? taf!.rawTAF : undefined,
     };
   }
   return out;

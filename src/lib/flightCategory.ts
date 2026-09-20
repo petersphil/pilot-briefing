@@ -72,14 +72,47 @@ export function parseVisibilitySm(visib: number | string | undefined | null): nu
   return Number.isFinite(n) ? n : null;
 }
 
+/** Lightweight parse of visibility + cloud layers from a raw METAR/TAF fragment. */
+export function parseRawObsFragment(raw: string | undefined | null): {
+  visib: number | string | null;
+  clouds: CloudLayer[];
+} {
+  if (!raw) return { visib: null, clouds: [] };
+  const s = raw.replace(/\s+/g, " ").trim();
+  let visib: number | string | null = null;
+  const visMatch = s.match(/\b(P?\d+(?:\s+\d+\/\d+)?|\d+\/\d+)SM\b/i);
+  if (visMatch) {
+    visib = visMatch[1].toUpperCase().startsWith("P")
+      ? visMatch[0].toUpperCase()
+      : visMatch[1];
+  } else if (/\bCAVOK\b/i.test(s)) {
+    visib = 10;
+  }
+  const clouds: CloudLayer[] = [];
+  const cloudRe = /\b(FEW|SCT|BKN|OVC|VV)(\d{3})\b/gi;
+  let m: RegExpExecArray | null;
+  while ((m = cloudRe.exec(s)) !== null) {
+    clouds.push({
+      cover: m[1].toUpperCase() === "VV" ? "VV" : m[1].toUpperCase(),
+      base: parseInt(m[2], 10) * 100,
+    });
+  }
+  return { visib, clouds };
+}
+
 export function categoryFromMetar(metar: MetarData | null): FlightCategory {
   if (!metar) return "UNK";
   const provided = (metar.fltCat || "").toUpperCase();
   if (provided === "VFR" || provided === "MVFR" || provided === "IFR" || provided === "LIFR") {
     return provided as FlightCategory;
   }
-  const ceiling = ceilingFromClouds(metar.clouds);
-  const vis = parseVisibilitySm(metar.visib);
+  let ceiling = ceilingFromClouds(metar.clouds);
+  let vis = parseVisibilitySm(metar.visib);
+  if ((ceiling == null && vis == null) || (!metar.clouds?.length && metar.visib == null)) {
+    const parsed = parseRawObsFragment(metar.rawOb);
+    if (ceiling == null) ceiling = ceilingFromClouds(parsed.clouds);
+    if (vis == null) vis = parseVisibilitySm(parsed.visib);
+  }
   return categoryFromCeilingVis(ceiling, vis);
 }
 

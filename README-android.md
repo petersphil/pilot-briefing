@@ -27,7 +27,7 @@ If a workflow push is rejected for missing `workflow` scope, edit the file in th
 3. Tap **Save key** — stored on the device only (`localStorage` + Capacitor Preferences).
 4. **Canadian NOTAMs** (NAV CANADA CFPS) need **no key**.
 
-METAR/TAF prefer HTTPS `aviationweather.gov` (no key); on TLS/network failure the app falls back to NOAA tgftp (and VATSIM for METAR). SSL verification stays enabled.
+On Android, METAR/TAF **skip** `aviationweather.gov` and use NOAA tgftp (VATSIM for METAR) plus Nav Canada CFPS TAF for Canadian ICAOs. SSL verification stays enabled.
 
 ## Architecture
 
@@ -81,6 +81,6 @@ Third-party APIs block browser CORS in the Android WebView. This app uses `@capa
 ## Troubleshooting
 
 - **No NOTAMs for US airports** — set RapidAPI key in Settings.
-- **METAR/TAF SSL / “Trust anchor for certification path not found”** — caused by an expired `aviationweather.gov` leaf cert (seen 2026-09-19). The app keeps trying AWC first, then falls back to NOAA tgftp without disabling SSL. Rebuild/reinstall the APK after that fix lands on `main`. If AWC renews its cert, structured JSON METAR/TAF resume automatically.
+- **METAR/TAF SSL / “Trust anchor for certification path not found”** — older builds still called `aviationweather.gov` on device (expired leaf cert seen 2026-09-19). Current builds never hit AWC on native; they use NOAA tgftp (+ CFPS TAF for CA). Rebuild/reinstall the APK from Actions. SSL verification stays on (no trust-all).
 - **Blank screen after update** — uninstall old build, install new debug APK.
 - **Actions failed** — check the “Static export + Capacitor sync” and Gradle logs; re-run workflow_dispatch.

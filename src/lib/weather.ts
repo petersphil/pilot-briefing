@@ -1,4 +1,5 @@
-import { nativeAwareFetch } from "./http";
+import { isNativeApp, nativeAwareFetch } from "./http";
+import { isCanadianAirport } from "./notams";
 import type { MetarData, TafData } from "./types";
 
 const AWC_BASE = "https://aviationweather.gov/api/data";
@@ -7,6 +8,7 @@ const TGFTP_METAR =
 const TGFTP_TAF =
   "https://tgftp.nws.noaa.gov/data/forecasts/taf/stations";
 const VATSIM_METAR = "https://metar.vatsim.net";
+const CFPS_ALPHA = "https://plan.navcanada.ca/weather/api/alpha/";
 
 const UA =
   "PilotBriefing/1.0 (+https://github.com/petersphil/pilot-briefing; contact via GitHub)";
@@ -108,6 +110,52 @@ async function fetchTafTgftp(icao: string): Promise<TafData | null> {
   }
 }
 
+/**
+ * Nav Canada CFPS TAF for Canadian ICAOs (same alpha API as NOTAMs).
+ * Response: data[].text is the raw TAF string.
+ */
+async function fetchTafCfps(icao: string): Promise<TafData | null> {
+  try {
+    const url = new URL(CFPS_ALPHA);
+    url.searchParams.set("site", icao.toUpperCase());
+    url.searchParams.set("alpha", "taf");
+    url.searchParams.set("notam_choice", "default");
+
+    const res = await nativeAwareFetch(url.toString(), {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Mozilla/5.0",
+        Referer: "https://plan.navcanada.ca/wxrecall/",
+      },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const payload = (await res.json()) as { data?: unknown[] };
+    const list = Array.isArray(payload?.data) ? payload.data : [];
+    for (const entry of list) {
+      const e = entry as Record<string, unknown>;
+      if (e.type && e.type !== "taf") continue;
+      const raw =
+        typeof e.text === "string"
+          ? e.text.trim()
+          : e.text != null
+            ? String(e.text).trim()
+            : "";
+      if (!raw) continue;
+      const rawTAF = raw.replace(/\n\s+/g, " ").replace(/\s+/g, " ").trim();
+      return {
+        icaoId: icao,
+        rawTAF,
+        issueTime:
+          e.startValidity != null ? String(e.startValidity) : undefined,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchMetarsFromAwc(icaos: string[]): Promise<Map<string, MetarData>> {
   const map = new Map<string, MetarData>();
   const ids = icaos.join(",");
@@ -140,23 +188,11 @@ async function fetchTafsFromAwc(icaos: string[]): Promise<Map<string, TafData>> 
   return map;
 }
 
-/**
- * METAR: try AWC JSON first; on any failure or missing station, fall back to
- * NOAA tgftp, then VATSIM. SSL verification stays enabled (no trust-all).
- */
-export async function fetchMetars(icaos: string[]): Promise<Map<string, MetarData>> {
-  const map = new Map<string, MetarData>();
-  if (!icaos.length) return map;
-  const unique = Array.from(new Set(icaos.map((c) => c.toUpperCase())));
-
-  try {
-    const awc = await fetchMetarsFromAwc(unique);
-    awc.forEach((v, k) => map.set(k, v));
-  } catch {
-    // AWC TLS/network/HTTP failure — fill entirely from fallbacks below
-  }
-
-  const missing = unique.filter((icao) => !map.has(icao));
+async function fillMetarsFromFallbacks(
+  map: Map<string, MetarData>,
+  icaos: string[]
+): Promise<void> {
+  const missing = icaos.filter((icao) => !map.has(icao));
   await Promise.all(
     missing.map(async (icao) => {
       const fromTgftp = await fetchMetarTgftp(icao);
@@ -168,43 +204,91 @@ export async function fetchMetars(icaos: string[]): Promise<Map<string, MetarDat
       if (fromVatsim) map.set(icao, fromVatsim);
     })
   );
+}
 
+async function fillTafsFromFallbacks(
+  map: Map<string, TafData>,
+  icaos: string[]
+): Promise<void> {
+  const missing = icaos.filter((icao) => !map.has(icao));
+  await Promise.all(
+    missing.map(async (icao) => {
+      const fromTgftp = await fetchTafTgftp(icao);
+      if (fromTgftp) {
+        map.set(icao, fromTgftp);
+        return;
+      }
+      // Native (and any leftover) Canadian stations: Nav Canada CFPS
+      if (isCanadianAirport(icao)) {
+        const fromCfps = await fetchTafCfps(icao);
+        if (fromCfps) map.set(icao, fromCfps);
+      }
+    })
+  );
+}
+
+/**
+ * METAR: on Capacitor native skip AWC (avoids aviationweather.gov TLS on device);
+ * use NOAA tgftp then VATSIM. On server/browser try AWC first, then same fallbacks.
+ * Never throws — always returns a Map (possibly empty). SSL verification stays on.
+ */
+export async function fetchMetars(icaos: string[]): Promise<Map<string, MetarData>> {
+  const map = new Map<string, MetarData>();
+  try {
+    if (!icaos.length) return map;
+    const unique = Array.from(new Set(icaos.map((c) => c.toUpperCase())));
+
+    if (!isNativeApp()) {
+      try {
+        const awc = await fetchMetarsFromAwc(unique);
+        awc.forEach((v, k) => map.set(k, v));
+      } catch {
+        // AWC TLS/network/HTTP failure — fill from fallbacks below
+      }
+    }
+
+    await fillMetarsFromFallbacks(map, unique);
+  } catch {
+    // Outer guard: never reject the promise
+  }
   return map;
 }
 
 /**
- * TAF: try AWC JSON first; on any failure or missing station, fall back to
- * NOAA tgftp (raw TAF only — no structured fcsts).
+ * TAF: on Capacitor native skip AWC; NOAA tgftp first, then CFPS for Canadian ICAOs.
+ * On server/browser try AWC first, then same fallbacks.
+ * Never throws — always returns a Map (possibly empty). SSL verification stays on.
  */
 export async function fetchTafs(icaos: string[]): Promise<Map<string, TafData>> {
   const map = new Map<string, TafData>();
-  if (!icaos.length) return map;
-  const unique = Array.from(new Set(icaos.map((c) => c.toUpperCase())));
-
   try {
-    const awc = await fetchTafsFromAwc(unique);
-    awc.forEach((v, k) => map.set(k, v));
+    if (!icaos.length) return map;
+    const unique = Array.from(new Set(icaos.map((c) => c.toUpperCase())));
+
+    if (!isNativeApp()) {
+      try {
+        const awc = await fetchTafsFromAwc(unique);
+        awc.forEach((v, k) => map.set(k, v));
+      } catch {
+        // AWC TLS/network/HTTP failure — fill from fallbacks below
+      }
+    }
+
+    await fillTafsFromFallbacks(map, unique);
   } catch {
-    // AWC TLS/network/HTTP failure — fill from tgftp below
+    // Outer guard: never reject the promise
   }
-
-  const missing = unique.filter((icao) => !map.has(icao));
-  await Promise.all(
-    missing.map(async (icao) => {
-      const fromTgftp = await fetchTafTgftp(icao);
-      if (fromTgftp) map.set(icao, fromTgftp);
-    })
-  );
-
   return map;
 }
 
 /**
  * Coverage notes for operators.
- * AWC METAR/TAF: worldwide (includes Canada & Caribbean) via ICAO stations.
- * When AWC TLS/HTTP fails, METAR/TAF fall back to NOAA tgftp (VATSIM for METAR).
+ * Native (Capacitor): METAR/TAF via NOAA tgftp (+ VATSIM METAR; CFPS TAF for CA).
+ * Server/browser: AWC when TLS healthy, same fallbacks otherwise.
  */
 export const COVERAGE_NOTE =
-  "METAR/TAF via aviationweather.gov (FAA AWC) when TLS is healthy; on AWC failure falls back to NOAA tgftp " +
-  "(tgftp.nws.noaa.gov) and VATSIM METAR. Worldwide station coverage including Canada and Caribbean. " +
+  "METAR/TAF on native apps use NOAA tgftp (tgftp.nws.noaa.gov; VATSIM for METAR) " +
+  "and Nav Canada CFPS TAF for Canadian ICAOs — aviationweather.gov is not called on device. " +
+  "On server/browser, AWC is tried first when TLS is healthy, then the same fallbacks. " +
+  "Worldwide station coverage including Canada and Caribbean. " +
   "NOTAMs: Canadian airports (iso_country CA) via NAV CANADA CFPS (no key); all other airports via SkyLink on RapidAPI (RAPIDAPI_KEY or device Settings key).";

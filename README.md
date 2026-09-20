@@ -103,8 +103,8 @@ Static hosting alone (S3/Netlify static) will **not** work without a separate AP
 
 | Product | Source | CA / US / Caribbean |
 |---------|--------|---------------------|
-| METAR | FAA AWC `/api/data/metar`, fallback NOAA tgftp (+ VATSIM) | Worldwide stations (CA & Caribbean included where reported) |
-| TAF | FAA AWC `/api/data/taf`, fallback NOAA tgftp (raw text) | Same |
+| METAR | Server/browser: FAA AWC then NOAA tgftp (+ VATSIM). Native: tgftp + VATSIM only (no AWC) | Worldwide stations (CA & Caribbean included where reported) |
+| TAF | Server/browser: FAA AWC then NOAA tgftp. Native: tgftp then CFPS for Canadian ICAOs | Same |
 | Airports | OurAirports subset in `data/airports.json` | CA, US, Caribbean ISOs |
 | NOTAMs | NAV CANADA CFPS (CA) · SkyLink RapidAPI (other) | **CA** no key; **US/Caribbean/other** need `RAPIDAPI_KEY` |
 
@@ -131,7 +131,7 @@ Primary groups only (others hidden):
 - **Canadian NOTAMs** come from NAV CANADA CFPS (public weather/alpha API). Coverage follows what CFPS returns for the site ICAO.  
 - **Non-Canadian NOTAMs** (US, Caribbean, etc.) require a SkyLink RapidAPI key (`RAPIDAPI_KEY` or `SKYLINK_RAPIDAPI_KEY`). Without it, those airports show a warning and an empty NOTAM list (or sample data if `ENABLE_SAMPLE_NOTAMS=1`).  
 - **Caribbean / overseas** completeness depends on SkyLink upstream coverage.  
-- **AWC TLS**: if `aviationweather.gov` certificate expires or HTTPS fails, METAR/TAF automatically fall back to NOAA tgftp (`tgftp.nws.noaa.gov`); METAR may also try VATSIM. SSL verification stays on (no trust-all). Fallback TAF is raw text only (horizon category badges may show UNK).  
+- **AWC TLS / Android**: Capacitor native never calls `aviationweather.gov` (avoids device TLS trust issues); METAR/TAF use NOAA tgftp (+ VATSIM METAR; Nav Canada CFPS TAF for CA). On server/browser, AWC is tried first when healthy, then the same fallbacks. SSL verification stays on (no trust-all). Fallback TAF is raw text only (horizon category badges may show UNK).  
 - AWC rate limit ≈ **100 req/min**; this app batches METAR/TAF by airport list.  
 - OurAirports rows can lag official renames; a few IATA↔ICAO overrides are applied in `scripts/build-airports.py`.  
 - TAF horizon snapshots pick the governing forecast period at dep/+6/+12/+18/+24 UTC; PROB groups are deprioritized when a base period overlaps.  

@@ -6,13 +6,11 @@ App ID: `ca.empressaero.pilotbriefing` · Web assets from Next.js static export 
 
 ## Get the APK (easiest)
 
-### One-time: enable the GitHub Actions workflow
+### Workflow file
 
-The OAuth token used by automation cannot create workflow files (`workflow` scope). Add it once in the GitHub UI:
+Canonical copy: [`deploy/android-apk.yml`](./deploy/android-apk.yml) (also at `.github/workflows/android-apk.yml`).
 
-1. Open [Create new file](https://github.com/petersphil/pilot-briefing/new/main?filename=.github/workflows/android-apk.yml) on `main`.
-2. Paste the contents of [`deploy/android-apk.yml`](./deploy/android-apk.yml) and commit.
-3. Or locally: `mkdir -p .github/workflows && cp deploy/android-apk.yml .github/workflows/ && git add .github && git commit && git push` (needs a token/PAT with the `workflow` scope).
+If a workflow push is rejected for missing `workflow` scope, edit the file in the GitHub UI and paste from `deploy/android-apk.yml`.
 
 ### Download the APK
 

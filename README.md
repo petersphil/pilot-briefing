@@ -12,7 +12,7 @@ Built with **Next.js (App Router) + TypeScript** so one Node process serves the 
 2. **METAR / TAF / NOTAMs** for all airports — weather from [aviationweather.gov](https://aviationweather.gov/data/api/) (FAA AWC Data API)  
 3. **Bundled airport DB** (OurAirports subset) for IATA↔ICAO and **west→east** longitude sort  
 4. **FAA flight-category colours** on badges and cards  
-5. **Tabs** — METARs · TAF @ dep · +6h · +12h · +18h · +24h · NOTAMs (horizons relative to **departure UTC**)  
+5. **Tabs** — METARs · TAFs · NOTAMs (single TAF view with flight-window bold + worst-category badge)  
 6. **NOTAM groups** (in order): runway closures/construction/shortening/restrictions → taxiway → fuel/fueler → IFR approach restrictions → airport/approach lighting. **Excludes** crane, birds, wildlife  
 
 ### Colour legend (FAA)
@@ -134,7 +134,7 @@ Primary groups only (others hidden):
 - **AWC TLS / Android**: Capacitor native never calls `aviationweather.gov` (avoids device TLS trust issues); METAR/TAF use NOAA tgftp (+ VATSIM METAR; Nav Canada CFPS TAF for CA). On server/browser, AWC is tried first when healthy, then the same fallbacks. SSL verification stays on (no trust-all). Fallback TAF is raw text only (horizon category badges may show UNK).  
 - AWC rate limit ≈ **100 req/min**; this app batches METAR/TAF by airport list.  
 - OurAirports rows can lag official renames; a few IATA↔ICAO overrides are applied in `scripts/build-airports.py`.  
-- TAF horizon snapshots pick the governing forecast period at dep/+6/+12/+18/+24 UTC; PROB groups are deprioritized when a base period overlaps.  
+- TAF badge uses the worst FAA category in the flight window (dep → enroute + 2h); raw TAF bolds clauses in that window. Internal horizon snapshots still compute dep/+6/+12/+18/+24 for summaries.  
 - Enroute duration is captured for pilot context; weather tabs are keyed off **departure time**, not ETA (per product requirements).  
 - Heliports and most US small fields without IATA are omitted from the bundled DB to keep size reasonable; four-letter ICAO codes still fetch weather even if not in the DB.
 

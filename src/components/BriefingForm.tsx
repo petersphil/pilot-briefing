@@ -10,11 +10,14 @@ export interface BriefingFormValues {
   enrouteMinutes: number;
 }
 
+const DEFAULT_ALTERNATES =
+  "CYVR, CYLW, CYXC, CYYC, CYEG, CYXE, CYQR, CYWG, CYQT, CYAM, CYSB, CYQF, CYYZ, CYOW, CYUL, CYHM";
+
+/** Now + 1 hour, rounded to the minute (datetime-local / UTC). */
 function defaultDepartureUtc(): string {
-  const d = new Date();
-  d.setUTCMinutes(0, 0, 0);
-  d.setUTCHours(d.getUTCHours() + 2);
-  return d.toISOString().slice(0, 16); // datetime-local style without Z
+  const d = new Date(Date.now() + 60 * 60 * 1000);
+  d.setUTCSeconds(0, 0);
+  return d.toISOString().slice(0, 16);
 }
 
 export function BriefingForm({
@@ -24,11 +27,11 @@ export function BriefingForm({
   onSubmit: (v: BriefingFormValues) => void;
   loading: boolean;
 }) {
-  const [departure, setDeparture] = useState("YYC");
-  const [destination, setDestination] = useState("DEN");
-  const [alternatesText, setAlternatesText] = useState("COS, CYS");
+  const [departure, setDeparture] = useState("CYYJ");
+  const [destination, setDestination] = useState("CYYT");
+  const [alternatesText, setAlternatesText] = useState(DEFAULT_ALTERNATES);
   const [departureLocal, setDepartureLocal] = useState(defaultDepartureUtc);
-  const [enrouteHours, setEnrouteHours] = useState(2);
+  const [enrouteHours, setEnrouteHours] = useState(6);
   const [enrouteMins, setEnrouteMins] = useState(0);
 
   function handleSubmit(e: FormEvent) {

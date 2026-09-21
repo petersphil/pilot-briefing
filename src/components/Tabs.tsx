@@ -1,21 +1,10 @@
 "use client";
 
-export type TabKey =
-  | "metars"
-  | "dep"
-  | "plus6"
-  | "plus12"
-  | "plus18"
-  | "plus24"
-  | "notams";
+export type TabKey = "metars" | "tafs" | "notams";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "metars", label: "METARs" },
-  { key: "dep", label: "TAF @ dep" },
-  { key: "plus6", label: "+6h" },
-  { key: "plus12", label: "+12h" },
-  { key: "plus18", label: "+18h" },
-  { key: "plus24", label: "+24h" },
+  { key: "tafs", label: "TAFs" },
   { key: "notams", label: "NOTAMs" },
 ];
 

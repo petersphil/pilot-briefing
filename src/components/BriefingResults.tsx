@@ -1,15 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { CategoryBadge, CategoryLegend } from "./CategoryBadge";
+import { useState } from "react";
+import { CategoryBadge } from "./CategoryBadge";
 import { TafRawDisplay } from "./TafRawDisplay";
 import { Tabs, type TabKey } from "./Tabs";
 import { NOTAM_GROUP_LABELS, NOTAM_GROUP_ORDER } from "@/lib/notams-client";
+import { worstCategoryInFlightWindow } from "@/lib/taf";
 import type {
   AirportBriefing,
   BriefingResponse,
   FlightCategory,
-  TafHorizonKey,
 } from "@/lib/types";
 
 function roleLabel(role: string) {
@@ -96,27 +96,22 @@ function MetarCards({ airports }: { airports: AirportBriefing[] }) {
 
 function TafCards({
   airports,
-  horizon,
-  horizonAt,
   departureUtc,
   enrouteMinutes,
 }: {
   airports: AirportBriefing[];
-  horizon: TafHorizonKey;
-  horizonAt?: string;
   departureUtc: string;
   enrouteMinutes: number;
 }) {
+  const dep = new Date(departureUtc);
   return (
     <div className="space-y-3">
-      {horizonAt && (
-        <p className="text-xs text-slate-400">
-          Snapshot at <span className="font-mono text-cyan-300">{formatUtc(horizonAt)}</span> (UTC)
-        </p>
-      )}
+      <p className="text-xs text-slate-400">
+        Badge = worst category in flight window (dep → enroute + 2h). Bold clauses in that window.
+      </p>
       {airports.map((b) => {
-        const snap = b.tafSnapshots[horizon];
-        const cat = snap?.flightCategory || "UNK";
+        const cat = worstCategoryInFlightWindow(b.taf, dep, enrouteMinutes);
+        const depSnap = b.tafSnapshots?.dep;
         return (
           <article
             key={b.airport.icao}
@@ -135,22 +130,13 @@ function TafCards({
               </div>
               <CategoryBadge category={cat} />
             </div>
-            {snap ? (
+            {b.taf?.rawTAF ? (
               <>
-                <p className="mt-3 text-sm font-medium text-slate-100">{snap.summary}</p>
-                {b.taf?.rawTAF ? (
-                  <TafRawDisplay
-                    taf={b.taf}
-                    departureUtc={departureUtc}
-                    enrouteMinutes={enrouteMinutes}
-                  />
-                ) : null}
-              </>
-            ) : b.taf?.rawTAF ? (
-              <>
-                <p className="mt-3 text-xs text-amber-200/90">
-                  Structured TAF horizons unavailable — raw TAF:
-                </p>
+                {depSnap?.summary && (
+                  <p className="mt-3 text-sm font-medium text-slate-100">
+                    At dep: {depSnap.summary}
+                  </p>
+                )}
                 <TafRawDisplay
                   taf={b.taf}
                   departureUtc={departureUtc}
@@ -158,7 +144,7 @@ function TafCards({
                 />
               </>
             ) : (
-              <p className="mt-3 text-sm text-slate-500">No TAF for this horizon</p>
+              <p className="mt-3 text-sm text-slate-500">No TAF available</p>
             )}
           </article>
         );
@@ -211,16 +197,6 @@ function NotamCards({ airports }: { airports: AirportBriefing[] }) {
 export function BriefingResults({ data }: { data: BriefingResponse }) {
   const [tab, setTab] = useState<TabKey>("metars");
 
-  const horizonAt = useMemo(() => {
-    const h = data.horizons.find((x) => x.key === tab);
-    return h?.atUtc;
-  }, [data.horizons, tab]);
-
-  const tafProps = {
-    departureUtc: data.departureUtc,
-    enrouteMinutes: data.enrouteMinutes,
-  };
-
   return (
     <div className="space-y-4">
       <div className="rounded-xl bg-slate-900/60 p-3 ring-1 ring-slate-800">
@@ -236,9 +212,6 @@ export function BriefingResults({ data }: { data: BriefingResponse }) {
             <div>Enroute {data.enrouteMinutes} min</div>
           </div>
         </div>
-        <div className="mt-3">
-          <CategoryLegend />
-        </div>
       </div>
 
       {data.warnings.length > 0 && (
@@ -253,20 +226,12 @@ export function BriefingResults({ data }: { data: BriefingResponse }) {
 
       <div role="tabpanel">
         {tab === "metars" && <MetarCards airports={data.airports} />}
-        {tab === "dep" && (
-          <TafCards airports={data.airports} horizon="dep" horizonAt={horizonAt} {...tafProps} />
-        )}
-        {tab === "plus6" && (
-          <TafCards airports={data.airports} horizon="plus6" horizonAt={horizonAt} {...tafProps} />
-        )}
-        {tab === "plus12" && (
-          <TafCards airports={data.airports} horizon="plus12" horizonAt={horizonAt} {...tafProps} />
-        )}
-        {tab === "plus18" && (
-          <TafCards airports={data.airports} horizon="plus18" horizonAt={horizonAt} {...tafProps} />
-        )}
-        {tab === "plus24" && (
-          <TafCards airports={data.airports} horizon="plus24" horizonAt={horizonAt} {...tafProps} />
+        {tab === "tafs" && (
+          <TafCards
+            airports={data.airports}
+            departureUtc={data.departureUtc}
+            enrouteMinutes={data.enrouteMinutes}
+          />
         )}
         {tab === "notams" && <NotamCards airports={data.airports} />}
       </div>

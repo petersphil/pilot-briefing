@@ -1,5 +1,9 @@
 import { categoryFromTafPeriod } from "./flightCategory";
-import { ensureTafFcsts } from "./taf-parse";
+import {
+  ensureTafFcsts,
+  flightWindowUnix,
+  periodOverlapsWindow,
+} from "./taf-parse";
 import type {
   FlightCategory,
   TafData,
@@ -15,6 +19,14 @@ export const HORIZON_HOURS: { key: TafHorizonKey; hours: number; label: string }
   { key: "plus18", hours: 18, label: "+18h" },
   { key: "plus24", hours: 24, label: "+24h" },
 ];
+
+const CATEGORY_RANK: Record<FlightCategory, number> = {
+  LIFR: 4,
+  IFR: 3,
+  MVFR: 2,
+  VFR: 1,
+  UNK: 0,
+};
 
 export function horizonTimes(departureUtc: Date) {
   return HORIZON_HOURS.map((h) => ({
@@ -93,8 +105,32 @@ export function summarizePeriod(period: TafPeriod | null): string {
 }
 
 /**
+ * Worst FAA category among TAF periods overlapping the flight window
+ * (dep → enroute + 2h). Falls back to category at dep when nothing overlaps.
+ */
+export function worstCategoryInFlightWindow(
+  taf: TafData | null,
+  departureUtc: Date,
+  enrouteMinutes: number
+): FlightCategory {
+  const enriched = ensureTafFcsts(taf);
+  if (!enriched?.fcsts?.length) return "UNK";
+  const win = flightWindowUnix(departureUtc, enrouteMinutes);
+  let worst: FlightCategory = "UNK";
+  for (const p of enriched.fcsts) {
+    if (!periodOverlapsWindow(p, win)) continue;
+    const cat = categoryFromTafPeriod(p);
+    if (CATEGORY_RANK[cat] > CATEGORY_RANK[worst]) worst = cat;
+  }
+  if (worst !== "UNK") return worst;
+  const atSec = Math.floor(departureUtc.getTime() / 1000);
+  return categoryFromTafPeriod(periodAt(enriched, atSec));
+}
+
+/**
  * Build horizon snapshots. When rawTAF is present but fcsts empty (tgftp/CFPS),
  * parse the raw bulletin so categories/summaries work.
+ * Kept for dep-time summary / tests; UI no longer switches horizon tabs.
  */
 export function buildTafSnapshots(
   taf: TafData | null,

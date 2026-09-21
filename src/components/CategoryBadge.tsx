@@ -32,21 +32,3 @@ export function CategoryBadge({
     </span>
   );
 }
-
-export function CategoryLegend() {
-  return (
-    <div className="flex flex-wrap gap-2 text-xs text-slate-300">
-      {(["VFR", "MVFR", "IFR", "LIFR"] as FlightCategory[]).map((c) => (
-        <span key={c} className="inline-flex items-center gap-1">
-          <CategoryBadge category={c} size="sm" />
-          <span className="text-slate-400">
-            {c === "VFR" && ">3000′ / >5SM"}
-            {c === "MVFR" && "1000–3000′ / 3–5SM"}
-            {c === "IFR" && "500–999′ / 1–<3SM"}
-            {c === "LIFR" && "<500′ / <1SM"}
-          </span>
-        </span>
-      ))}
-    </div>
-  );
-}

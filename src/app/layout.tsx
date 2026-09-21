@@ -16,7 +16,7 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: "Pilot Briefing · Phil Peters",
   description:
-    "Mobile-first IFR flight briefing: METAR, TAF horizons, and NOTAMs for Canada, USA, and the Caribbean.",
+    "Mobile-first IFR flight briefing: METAR, TAF, and NOTAMs for Canada, USA, and the Caribbean.",
   applicationName: "Pilot Briefing",
   authors: [{ name: "Phil Peters" }],
 };

@@ -2,6 +2,7 @@ import { resolveLeg, sortWestToEast } from "./airports";
 import { categoryFromMetar } from "./flightCategory";
 import { groupNotams, fetchNotams, type NotamFetchOptions } from "./notams";
 import { buildTafSnapshots, horizonTimes } from "./taf";
+import { ensureTafFcsts } from "./taf-parse";
 import type { BriefingRequest, BriefingResponse, AirportBriefing } from "./types";
 import { COVERAGE_NOTE, fetchMetars, fetchTafs } from "./weather";
 
@@ -55,7 +56,9 @@ export async function buildBriefing(
   const sorted = sortWestToEast(resolved);
   const briefings: AirportBriefing[] = sorted.map((airport) => {
     const metar = metars.get(airport.icao) || null;
-    const taf = tafs.get(airport.icao) || null;
+    const tafRaw = tafs.get(airport.icao) || null;
+    // Fill fcsts from raw TAF when AWC structured periods missing (Android tgftp/CFPS)
+    const taf = ensureTafFcsts(tafRaw);
     const notams = (notamResult.items.get(airport.icao) || []).filter(
       (n) => n.group !== "other"
     );

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { CategoryBadge, CategoryLegend } from "./CategoryBadge";
+import { TafRawDisplay } from "./TafRawDisplay";
 import { Tabs, type TabKey } from "./Tabs";
 import { NOTAM_GROUP_LABELS, NOTAM_GROUP_ORDER } from "@/lib/notams-client";
 import type {
@@ -97,10 +98,14 @@ function TafCards({
   airports,
   horizon,
   horizonAt,
+  departureUtc,
+  enrouteMinutes,
 }: {
   airports: AirportBriefing[];
   horizon: TafHorizonKey;
   horizonAt?: string;
+  departureUtc: string;
+  enrouteMinutes: number;
 }) {
   return (
     <div className="space-y-3">
@@ -133,17 +138,12 @@ function TafCards({
             {snap ? (
               <>
                 <p className="mt-3 text-sm font-medium text-slate-100">{snap.summary}</p>
-                {!snap.period && (snap.rawFragment || b.taf?.rawTAF) ? (
-                  <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-slate-200">
-                    {snap.rawFragment || b.taf?.rawTAF}
-                  </pre>
-                ) : b.taf?.rawTAF ? (
-                  <details className="mt-2">
-                    <summary className="cursor-pointer text-[11px] text-cyan-400/80">Full TAF</summary>
-                    <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[11px] text-slate-400">
-                      {b.taf.rawTAF}
-                    </pre>
-                  </details>
+                {b.taf?.rawTAF ? (
+                  <TafRawDisplay
+                    taf={b.taf}
+                    departureUtc={departureUtc}
+                    enrouteMinutes={enrouteMinutes}
+                  />
                 ) : null}
               </>
             ) : b.taf?.rawTAF ? (
@@ -151,9 +151,11 @@ function TafCards({
                 <p className="mt-3 text-xs text-amber-200/90">
                   Structured TAF horizons unavailable — raw TAF:
                 </p>
-                <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-slate-200">
-                  {b.taf.rawTAF}
-                </pre>
+                <TafRawDisplay
+                  taf={b.taf}
+                  departureUtc={departureUtc}
+                  enrouteMinutes={enrouteMinutes}
+                />
               </>
             ) : (
               <p className="mt-3 text-sm text-slate-500">No TAF for this horizon</p>
@@ -214,6 +216,11 @@ export function BriefingResults({ data }: { data: BriefingResponse }) {
     return h?.atUtc;
   }, [data.horizons, tab]);
 
+  const tafProps = {
+    departureUtc: data.departureUtc,
+    enrouteMinutes: data.enrouteMinutes,
+  };
+
   return (
     <div className="space-y-4">
       <div className="rounded-xl bg-slate-900/60 p-3 ring-1 ring-slate-800">
@@ -247,19 +254,19 @@ export function BriefingResults({ data }: { data: BriefingResponse }) {
       <div role="tabpanel">
         {tab === "metars" && <MetarCards airports={data.airports} />}
         {tab === "dep" && (
-          <TafCards airports={data.airports} horizon="dep" horizonAt={horizonAt} />
+          <TafCards airports={data.airports} horizon="dep" horizonAt={horizonAt} {...tafProps} />
         )}
         {tab === "plus6" && (
-          <TafCards airports={data.airports} horizon="plus6" horizonAt={horizonAt} />
+          <TafCards airports={data.airports} horizon="plus6" horizonAt={horizonAt} {...tafProps} />
         )}
         {tab === "plus12" && (
-          <TafCards airports={data.airports} horizon="plus12" horizonAt={horizonAt} />
+          <TafCards airports={data.airports} horizon="plus12" horizonAt={horizonAt} {...tafProps} />
         )}
         {tab === "plus18" && (
-          <TafCards airports={data.airports} horizon="plus18" horizonAt={horizonAt} />
+          <TafCards airports={data.airports} horizon="plus18" horizonAt={horizonAt} {...tafProps} />
         )}
         {tab === "plus24" && (
-          <TafCards airports={data.airports} horizon="plus24" horizonAt={horizonAt} />
+          <TafCards airports={data.airports} horizon="plus24" horizonAt={horizonAt} {...tafProps} />
         )}
         {tab === "notams" && <NotamCards airports={data.airports} />}
       </div>

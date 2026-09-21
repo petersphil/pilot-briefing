@@ -38,7 +38,7 @@ const EXCLUDE_PATTERNS = [
 ];
 
 const RUNWAY_RE =
-  /\b(RWY|RUNWAY|RWYS|RUNWAYS)\b.*\b(CLSD|CLOSED|CLOSURE|CONSTRUCTION|WIP|SHORTEN|SHORTENED|LENGTH|RESTRICT|RESTRICTION|NOT\s+AVBL|UNUSABLE|CLOSED\s+TO)\b|\b(CLSD|CLOSED|CONSTRUCTION|WIP|SHORTEN)\b.*\b(RWY|RUNWAY)\b|\bRWY\s*\d{2}/i;
+  /\b(RWY|RUNWAY|RWYS|RUNWAYS)\b.*\b(CLSD|CLOSED|CLOSURE|CONSTRUCTION|WIP|SHORTEN|SHORTENED|LENGTH|RESTRICT|RESTRICTION|NOT\s+AVBL|UNUSABLE|CLOSED\s+TO)\b|\b(CLSD|CLOSED|CONSTRUCTION|WIP|SHORTEN|SHORTENED|RESTRICT|RESTRICTION|NOT\s+AVBL)\b.*\b(RWY|RUNWAY|RWYS)\b/i;
 
 const TAXIWAY_RE = /\b(TWY|TAXIWAY|TAXIWAYS|TWYS)\b/i;
 
@@ -55,11 +55,12 @@ export function shouldExcludeNotam(text: string): boolean {
 }
 
 export function classifyNotam(text: string): NotamGroup {
+  // IFR approach and lighting before runway: bare "RWY nn" must not steal ILS/ALSF NOTAMs
+  if (IFR_RE.test(text)) return "ifr_approach";
+  if (LIGHTING_RE.test(text)) return "lighting";
   if (RUNWAY_RE.test(text)) return "runway";
   if (TAXIWAY_RE.test(text)) return "taxiway";
   if (FUEL_RE.test(text)) return "fuel";
-  if (IFR_RE.test(text)) return "ifr_approach";
-  if (LIGHTING_RE.test(text)) return "lighting";
   return "other";
 }
 

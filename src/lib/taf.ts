@@ -1,4 +1,5 @@
 import { categoryFromTafPeriod } from "./flightCategory";
+import { ensureTafFcsts } from "./taf-parse";
 import type {
   FlightCategory,
   TafData,
@@ -38,11 +39,24 @@ export function periodAt(taf: TafData | null, atUnixSec: number): TafPeriod | nu
       .sort((a, b) => b.timeFrom - a.timeFrom)[0];
     return prev || null;
   }
-  // Prefer base / FM / BECMG over PROB when overlapping
-  const nonProb = containing.filter((p) => !p.probability);
-  const pool = nonProb.length ? nonProb : containing;
+  // Prefer base / FM / BECMG over PROB/TEMPO when overlapping for primary category,
+  // but TEMPO without probability is still a real change — prefer most recent prevailing
+  const prevailing = containing.filter(
+    (p) => !p.probability && (!p.fcstChange || p.fcstChange === "FM" || p.fcstChange === "BECMG" || p.fcstChange === "BASE" || !p.fcstChange)
+  );
+  // Treat null fcstChange as BASE
+  const baseOrFm = containing.filter(
+    (p) =>
+      !p.probability &&
+      (p.fcstChange == null ||
+        p.fcstChange === "FM" ||
+        p.fcstChange === "BECMG" ||
+        p.fcstChange === "BASE")
+  );
+  const pool = baseOrFm.length ? baseOrFm : prevailing.length ? prevailing : containing.filter((p) => !p.probability);
+  const use = pool.length ? pool : containing;
   // Most recently started
-  return pool.sort((a, b) => b.timeFrom - a.timeFrom)[0];
+  return use.sort((a, b) => b.timeFrom - a.timeFrom)[0];
 }
 
 export function summarizePeriod(period: TafPeriod | null): string {
@@ -69,36 +83,45 @@ export function summarizePeriod(period: TafPeriod | null): string {
   if (period.clouds?.length) {
     bits.push(
       period.clouds
-        .map((c) => `${c.cover}${c.base != null ? String(c.base).padStart(3, "0") : ""}`)
+        .map((c) => `${c.cover}${c.base != null ? String(Math.round(c.base / 100)).padStart(3, "0") : ""}`)
         .join(" ")
     );
   } else if (period.vertVis != null) {
-    bits.push(`VV${String(period.vertVis).padStart(3, "0")}`);
+    bits.push(`VV${String(Math.round(period.vertVis / 100)).padStart(3, "0")}`);
   }
   return bits.join(" ") || "Conditions as forecast";
 }
 
+/**
+ * Build horizon snapshots. When rawTAF is present but fcsts empty (tgftp/CFPS),
+ * parse the raw bulletin so categories/summaries work.
+ */
 export function buildTafSnapshots(
   taf: TafData | null,
   departureUtc: Date
 ): Record<TafHorizonKey, TafSnapshot | null> {
+  const enriched = ensureTafFcsts(taf);
   const out = {} as Record<TafHorizonKey, TafSnapshot | null>;
-  const rawOnly = Boolean(taf?.rawTAF) && !taf?.fcsts?.length;
+  const hadOnlyRaw = Boolean(taf?.rawTAF) && !taf?.fcsts?.length;
   for (const h of horizonTimes(departureUtc)) {
     const at = new Date(h.atUtc);
     const atSec = Math.floor(at.getTime() / 1000);
-    const period = periodAt(taf, atSec);
+    const period = periodAt(enriched, atSec);
     const flightCategory: FlightCategory = categoryFromTafPeriod(period);
     out[h.key] = {
       horizon: h.key,
       atUtc: h.atUtc,
       period,
       flightCategory,
-      summary: rawOnly
-        ? "Raw TAF only (AWC structured periods unavailable — showing NOAA tgftp text)"
-        : summarizePeriod(period),
-      rawFragment: rawOnly ? taf!.rawTAF : undefined,
+      summary: period
+        ? summarizePeriod(period)
+        : hadOnlyRaw
+          ? "Could not parse TAF periods — showing raw text"
+          : "No TAF period for this horizon",
+      rawFragment: hadOnlyRaw && !period ? taf!.rawTAF : undefined,
     };
   }
   return out;
 }
+
+export { ensureTafFcsts };

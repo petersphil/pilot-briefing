@@ -4,9 +4,11 @@ import { useState } from "react";
 import { CategoryBadge } from "./CategoryBadge";
 import { TafRawDisplay } from "./TafRawDisplay";
 import { NotamDisplay } from "./NotamDisplay";
+import { AtisSheet } from "./AtisSheet";
 import { Tabs, type TabKey } from "./Tabs";
 import { NOTAM_GROUP_LABELS, NOTAM_GROUP_ORDER } from "@/lib/notams-client";
 import { worstCategoryInFlightWindow } from "@/lib/taf";
+import { atisLinkForAirport, type AtisLink } from "@/lib/atis";
 import type {
   AirportBriefing,
   BriefingResponse,
@@ -43,10 +45,18 @@ function formatUtc(iso: string) {
   }
 }
 
-function AirportHeader({ b }: { b: AirportBriefing }) {
+function AirportHeader({
+  b,
+  atis,
+  onOpenAtis,
+}: {
+  b: AirportBriefing;
+  atis?: AtisLink | null;
+  onOpenAtis?: () => void;
+}) {
   return (
     <div className="flex items-start justify-between gap-2">
-      <div>
+      <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${roleClass(b.airport.role)}`}>
             {roleLabel(b.airport.role)}
@@ -62,35 +72,60 @@ function AirportHeader({ b }: { b: AirportBriefing }) {
           {` · ${b.airport.country}`}
         </p>
       </div>
-      <CategoryBadge category={b.flightCategory} />
+      <div className="flex shrink-0 flex-col items-end gap-1.5">
+        <CategoryBadge category={b.flightCategory} />
+        {atis && onOpenAtis && (
+          <button
+            type="button"
+            onClick={onOpenAtis}
+            className="rounded-md bg-slate-800 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-cyan-300 ring-1 ring-cyan-800/80 active:bg-slate-700"
+          >
+            {atis.label}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
-function MetarCards({ airports }: { airports: AirportBriefing[] }) {
+function MetarCards({
+  airports,
+  onOpenAtis,
+}: {
+  airports: AirportBriefing[];
+  onOpenAtis: (link: AtisLink) => void;
+}) {
   return (
     <div className="space-y-3">
-      {airports.map((b) => (
-        <article
-          key={b.airport.icao}
-          className="rounded-xl bg-slate-900/90 p-3 ring-1 ring-slate-800"
-          style={{ borderLeft: `4px solid ${cardBorder(b.flightCategory)}` }}
-        >
-          <AirportHeader b={b} />
-          {b.metar ? (
-            <pre className="mt-3 whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-slate-200">
-              {b.metar.rawOb}
-            </pre>
-          ) : (
-            <p className="mt-3 text-sm text-slate-500">No METAR available</p>
-          )}
-          {b.metar?.reportTime && (
-            <p className="mt-2 text-[10px] text-slate-500">
-              Report {formatUtc(b.metar.reportTime)} · sorted W→E
-            </p>
-          )}
-        </article>
-      ))}
+      {airports.map((b) => {
+        // Only airports that are reporting a METAR get an ATIS button
+        const atis = b.metar ? atisLinkForAirport(b.airport) : null;
+        return (
+          <article
+            key={b.airport.icao}
+            className="rounded-xl bg-slate-900/90 p-3 ring-1 ring-slate-800"
+            style={{ borderLeft: `4px solid ${cardBorder(b.flightCategory)}` }}
+          >
+            <AirportHeader
+              b={b}
+              atis={atis}
+              onOpenAtis={atis ? () => onOpenAtis(atis) : undefined}
+            />
+            {b.metar ? (
+              <pre className="mt-3 whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-slate-200">
+                {b.metar.rawOb}
+              </pre>
+            ) : (
+              <p className="mt-3 text-sm text-slate-500">No METAR available</p>
+            )}
+            {b.metar?.reportTime && (
+              <p className="mt-2 text-[10px] text-slate-500">
+                Report {formatUtc(b.metar.reportTime)} · sorted W→E
+              </p>
+            )}
+          </article>
+        );
+      })}
     </div>
   );
 }
@@ -214,6 +249,7 @@ function NotamCards({
 
 export function BriefingResults({ data }: { data: BriefingResponse }) {
   const [tab, setTab] = useState<TabKey>("metars");
+  const [atisLink, setAtisLink] = useState<AtisLink | null>(null);
 
   return (
     <div className="space-y-4">
@@ -243,7 +279,9 @@ export function BriefingResults({ data }: { data: BriefingResponse }) {
       <Tabs active={tab} onChange={setTab} />
 
       <div role="tabpanel">
-        {tab === "metars" && <MetarCards airports={data.airports} />}
+        {tab === "metars" && (
+          <MetarCards airports={data.airports} onOpenAtis={setAtisLink} />
+        )}
         {tab === "tafs" && (
           <TafCards
             airports={data.airports}
@@ -264,6 +302,8 @@ export function BriefingResults({ data }: { data: BriefingResponse }) {
       <p className="text-[10px] text-slate-600">
         NOTAM source: {data.notamSource} · Generated {formatUtc(data.generatedAt)}
       </p>
+
+      <AtisSheet link={atisLink} onClose={() => setAtisLink(null)} />
     </div>
   );
 }

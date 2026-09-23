@@ -1,8 +1,13 @@
 /**
- * Quick sanity checks for raw TAF parse + NOTAM classify.
+ * Quick sanity checks for raw TAF parse + NOTAM classify + NOTAM display.
  * Run: npx --yes tsx scripts/sanity-taf-notams.ts
  */
 import { categoryFromTafPeriod } from "../src/lib/flightCategory";
+import {
+  notamOverlapsFlightWindow,
+  rscColor,
+  tokenizeNotamForDisplay,
+} from "../src/lib/notam-display";
 import { classifyNotam } from "../src/lib/notams";
 import { buildTafSnapshots, periodAt } from "../src/lib/taf";
 import {
@@ -24,7 +29,7 @@ function assert(cond: boolean, msg: string) {
 }
 
 // --- NOTAM classify ---
-assert(classifyNotam("ILS RWY 28 U/S") === "ifr_approach", 'ILS RWY 28 U/S → ifr_approach');
+assert(classifyNotam("ILS RWY 28 U/S") === "ifr_approach", "ILS RWY 28 U/S → ifr_approach");
 assert(classifyNotam("RWY 16/34 CLSD") === "runway", "RWY 16/34 CLSD → runway");
 assert(classifyNotam("ALSF-2 RWY 10 U/S") === "lighting", "ALSF-2 RWY 10 U/S → lighting");
 assert(classifyNotam("TWY A CLSD") === "taxiway", "TWY A CLSD → taxiway");
@@ -84,12 +89,72 @@ assert(!!snaps.dep?.period, "dep has period");
 
 // Flight window bold overlap: dep 21:30, enroute 60 → window to 00:30 next day
 const win = flightWindowUnix(dep, 60);
-const overlapping = enriched.fcsts!.filter((p) => periodOverlapsWindow(p, win));
-assert(overlapping.length >= 1, `window overlaps >=1 period (got ${overlapping.length})`);
+const overlappingPeriods = enriched.fcsts!.filter((p) => periodOverlapsWindow(p, win));
+assert(overlappingPeriods.length >= 1, `window overlaps >=1 period (got ${overlappingPeriods.length})`);
 
 const atSec = Math.floor(dep.getTime() / 1000);
 const p = periodAt(enriched, atSec);
 assert(!!p, "periodAt returns period at dep");
+
+// --- NOTAM display: flight window + hazard/RSC spans ---
+const depNotam = new Date("2026-09-22T18:00:00Z");
+assert(
+  notamOverlapsFlightWindow(
+    { start: "2026-09-22T17:00:00Z", end: "2026-09-22T22:00:00Z" },
+    depNotam,
+    60
+  ),
+  "NOTAM overlapping flight window"
+);
+assert(
+  !notamOverlapsFlightWindow(
+    { start: "2026-09-23T12:00:00Z", end: "2026-09-23T18:00:00Z" },
+    depNotam,
+    60
+  ),
+  "NOTAM outside flight window"
+);
+assert(
+  notamOverlapsFlightWindow({ start: null, end: null }, depNotam, 60),
+  "missing start/end treated as always valid"
+);
+
+const clsdTokens = tokenizeNotamForDisplay("CYYC RWY 17L/35R CLSD DUE WIP", true);
+const hazard = clsdTokens.find((t) => t.kind === "hazard");
+assert(
+  !!hazard && /RWY 17L\/35R CLSD/i.test(hazard.text),
+  `CLSD hazard span (got ${hazard?.text})`
+);
+assert(hazard?.bold === true, "CLSD hazard bold");
+
+const rsc6 = tokenizeNotamForDisplay("RSC 6 ALL TWY", true);
+assert(!!rsc6.find((t) => t.kind === "rsc" && t.rscLevel === 6), "RSC 6 token");
+assert(rscColor(6) === "#22c55e", "RSC 6 → green");
+
+const rsc2 = tokenizeNotamForDisplay("RSC2 RWY 16", true);
+assert(!!rsc2.find((t) => t.kind === "rsc" && t.rscLevel === 2), "RSC2 token");
+assert(rscColor(2) === "#ef4444", "RSC 2 → red");
+
+const multi = tokenizeNotamForDisplay("RSC 5/3/1", true);
+const levels = multi.filter((t) => t.kind === "rsc").map((t) => t.rscLevel);
+assert(
+  levels[0] === 5 && levels[1] === 3 && levels[2] === 1,
+  `RSC 5/3/1 thirds (got ${levels.join("/")})`
+);
+assert(
+  rscColor(5) === "#22c55e" && rscColor(3) === "#eab308" && rscColor(1) === "#ef4444",
+  "RSC multi colours"
+);
+
+const muted = tokenizeNotamForDisplay("TWY A CLSD", false);
+assert(
+  muted.every((t) => (t.kind === "text" ? t.bold === false : true)),
+  "out-of-window plain text not bold"
+);
+assert(
+  tokenizeNotamForDisplay("RWY 16/34 CLSD", false).some((t) => t.kind === "hazard"),
+  "hazard still highlighted out-of-window"
+);
 
 if (failed) {
   console.error(`\n${failed} assertion(s) failed`);

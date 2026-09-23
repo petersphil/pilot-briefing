@@ -19,6 +19,10 @@ export const metadata: Metadata = {
     "Mobile-first IFR flight briefing: METAR, TAF, and NOTAMs for Canada, USA, and the Caribbean.",
   applicationName: "Pilot Briefing",
   authors: [{ name: "Phil Peters" }],
+  icons: {
+    icon: [{ url: "/icon.png", type: "image/png" }],
+    apple: [{ url: "/icon.png" }],
+  },
 };
 
 export const viewport: Viewport = {

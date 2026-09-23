@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CategoryBadge } from "./CategoryBadge";
 import { TafRawDisplay } from "./TafRawDisplay";
+import { NotamDisplay } from "./NotamDisplay";
 import { Tabs, type TabKey } from "./Tabs";
 import { NOTAM_GROUP_LABELS, NOTAM_GROUP_ORDER } from "@/lib/notams-client";
 import { worstCategoryInFlightWindow } from "@/lib/taf";
@@ -153,9 +154,22 @@ function TafCards({
   );
 }
 
-function NotamCards({ airports }: { airports: AirportBriefing[] }) {
+function NotamCards({
+  airports,
+  departureUtc,
+  enrouteMinutes,
+}: {
+  airports: AirportBriefing[];
+  departureUtc: string;
+  enrouteMinutes: number;
+}) {
+  const winEndMin = enrouteMinutes + 120;
   return (
     <div className="space-y-4">
+      <p className="text-xs text-slate-400">
+        Bold = validity overlaps flight window (dep → +{winEndMin} min incl. +2h). Closures / ILS U/S in
+        bold red; RSC 5–6 green, 3–4 yellow, 1–2 red.
+      </p>
       {airports.map((b) => (
         <article key={b.airport.icao} className="rounded-xl bg-slate-900/90 p-3 ring-1 ring-slate-800">
           <AirportHeader b={b} />
@@ -172,9 +186,13 @@ function NotamCards({ airports }: { airports: AirportBriefing[] }) {
                     {list.map((n) => (
                       <li
                         key={n.id}
-                        className="rounded-lg bg-slate-950/80 px-2.5 py-2 font-mono text-[11px] leading-snug text-slate-300 ring-1 ring-slate-800"
+                        className="rounded-lg bg-slate-950/80 px-2.5 py-2 ring-1 ring-slate-800"
                       >
-                        {n.text}
+                        <NotamDisplay
+                          notam={n}
+                          departureUtc={departureUtc}
+                          enrouteMinutes={enrouteMinutes}
+                        />
                       </li>
                     ))}
                   </ul>
@@ -233,7 +251,13 @@ export function BriefingResults({ data }: { data: BriefingResponse }) {
             enrouteMinutes={data.enrouteMinutes}
           />
         )}
-        {tab === "notams" && <NotamCards airports={data.airports} />}
+        {tab === "notams" && (
+          <NotamCards
+            airports={data.airports}
+            departureUtc={data.departureUtc}
+            enrouteMinutes={data.enrouteMinutes}
+          />
+        )}
       </div>
 
       <p className="text-[10px] leading-relaxed text-slate-600">{data.coverageNote}</p>

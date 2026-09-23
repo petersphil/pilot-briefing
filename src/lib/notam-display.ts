@@ -3,7 +3,7 @@
  * Flight window matches TAF: [dep, dep + enroute + 2h].
  */
 
-export type NotamTokenKind = "text" | "hazard" | "rsc";
+export type NotamTokenKind = "text" | "hazard" | "rsc" | "caution";
 
 export interface NotamDisplayToken {
   text: string;
@@ -52,11 +52,17 @@ export function rscColor(level: number): string | undefined {
 }
 
 /**
- * Hazard phrases: RWY…CLSD / RUNWAY…CLOSED / ILS…U/S / approach UNSERVICEABLE.
- * Captures Phil-style tokens like `RWY 17L/35R CLSD`.
+ * Hazard phrases: RWY…CLSD / RUNWAY…CLOSED / ILS…U/S (incl. multi-RWY) / VOR U/S / approach UNSERVICEABLE.
+ * Captures Phil-style tokens like `RWY 17L/35R CLSD` and `ILS RWY 08L AND RWY 26R U/S`.
  */
 const HAZARD_RE =
-  /\b(?:(?:RWY|RWYS|RUNWAYS?)\s+[\dA-Z]+(?:\s*\/\s*[\dA-Z]+)?\s+(?:CLSD|CLOSED)|(?:ILS|LOC|LDA|SDF)(?:\s+(?:RWY|RUNWAY)\s+[\dA-Z\/]+)?\s+(?:U\/S|UNSERVICEABLE)|(?:APPROACH|APCH|IAP|MISSED\s+APPROACH)\s+(?:U\/S|UNSERVICEABLE)|(?:U\/S|UNSERVICEABLE)\s+(?:APPROACH|APCH|IAP))\b/gi;
+  /\b(?:(?:RWY|RWYS|RUNWAYS?)\s+[\dA-Z]+(?:\s*\/\s*[\dA-Z]+)?\s+(?:CLSD|CLOSED)|(?:ILS|LOC|LDA|SDF|VOR|NDB|GS|GP)(?:\s+(?:RWY|RUNWAY)\s+[\dA-Z\/]+(?:\s+AND\s+(?:RWY|RUNWAY)\s+[\dA-Z\/]+)*)?(?:\s+[A-Z0-9.\/]+)*\s+(?:U\/S|UNSERVICEABLE)|(?:APPROACH|APCH|IAP|MISSED\s+APPROACH)\s+(?:U\/S|UNSERVICEABLE)|(?:U\/S|UNSERVICEABLE)\s+(?:APPROACH|APCH|IAP))\b/gi;
+
+/**
+ * Caution (orange): NOT AUTH, and declared distances LDA/TODA/ASDA/TORA + length.
+ */
+const CAUTION_RE =
+  /\b(?:NOT\s+AUTH(?:ORIZED)?|(?:LDA|TODA|ASDA|TORA)\s*[:=]?\s*\d{3,5}(?:\s*(?:FT|M|METRES?|METERS?|FEET))?)\b/gi;
 
 /**
  * Canadian RSC form: `RSC 02 6/6/6 DRY…`
@@ -88,6 +94,16 @@ function collectHazardSpans(text: string): Span[] {
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     spans.push({ start: m.index, end: m.index + m[0].length, kind: "hazard" });
+  }
+  return spans;
+}
+
+function collectCautionSpans(text: string): Span[] {
+  const spans: Span[] = [];
+  const re = new RegExp(CAUTION_RE.source, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    spans.push({ start: m.index, end: m.index + m[0].length, kind: "caution" });
   }
   return spans;
 }
@@ -206,14 +222,20 @@ function collectRscSpans(text: string): Span[] {
   return spans.sort((a, b) => a.start - b.start);
 }
 
-function mergeSpans(hazard: Span[], rsc: Span[]): Span[] {
-  const all = [...hazard, ...rsc].sort((a, b) => a.start - b.start || b.end - a.end);
+const KIND_RANK: Record<NotamTokenKind, number> = {
+  hazard: 3,
+  caution: 2,
+  rsc: 1,
+  text: 0,
+};
+
+function mergeSpans(...groups: Span[][]): Span[] {
+  const all = groups.flat().sort((a, b) => a.start - b.start || b.end - a.end);
   const out: Span[] = [];
   for (const s of all) {
     const last = out[out.length - 1];
     if (last && s.start < last.end) {
-      if (last.kind === "hazard") continue;
-      if (s.kind === "hazard") {
+      if (KIND_RANK[s.kind] > KIND_RANK[last.kind]) {
         out.pop();
         out.push(s);
       }
@@ -229,7 +251,11 @@ export function tokenizeNotamForDisplay(
   overlapsWindow: boolean
 ): NotamDisplayToken[] {
   if (!text) return [];
-  const spans = mergeSpans(collectHazardSpans(text), collectRscSpans(text));
+  const spans = mergeSpans(
+    collectHazardSpans(text),
+    collectCautionSpans(text),
+    collectRscSpans(text)
+  );
   const tokens: NotamDisplayToken[] = [];
   let i = 0;
   for (const span of spans) {
@@ -245,14 +271,14 @@ export function tokenizeNotamForDisplay(
         tokens.push({
           text: p.text,
           kind: p.kind,
-          bold: overlapsWindow || p.kind === "hazard" || p.kind === "rsc",
+          bold: overlapsWindow || p.kind === "hazard" || p.kind === "caution" || p.kind === "rsc",
           rscLevel: p.rscLevel,
         });
       }
-    } else if (span.kind === "hazard") {
+    } else if (span.kind === "hazard" || span.kind === "caution") {
       tokens.push({
         text: text.slice(span.start, span.end),
-        kind: "hazard",
+        kind: span.kind,
         bold: true,
       });
     } else {

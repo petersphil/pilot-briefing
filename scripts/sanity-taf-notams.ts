@@ -184,6 +184,31 @@ assert(
   "hazard still highlighted out-of-window"
 );
 
+const multiIls = tokenizeNotamForDisplay("E) ILS RWY 08L AND RWY 26R U/S)", true);
+assert(
+  multiIls.some((t) => t.kind === "hazard" && /ILS RWY 08L AND RWY 26R U\/S/i.test(t.text)),
+  `multi-RWY ILS U/S hazard (got ${multiIls.filter((t) => t.kind === "hazard").map((t) => t.text).join("|")})`
+);
+assert(
+  tokenizeNotamForDisplay("E) PITT MEADOWS VOR YPK 112.4MHZ U/S)", true).some(
+    (t) => t.kind === "hazard" && /VOR.*U\/S/i.test(t.text)
+  ),
+  "VOR U/S hazard"
+);
+assert(
+  tokenizeNotamForDisplay("ILS CAT II APCH RWY 26L NOT AUTH", true).some(
+    (t) => t.kind === "caution" && /NOT AUTH/i.test(t.text)
+  ),
+  "NOT AUTH caution orange"
+);
+const dist = tokenizeNotamForDisplay("LDA 6500FT TODA 7200 ASDA 6800", true);
+assert(
+  dist.filter((t) => t.kind === "caution").length >= 3,
+  `LDA/TODA/ASDA caution spans (got ${dist.filter((t) => t.kind === "caution").map((t) => t.text).join("|")})`
+);
+assert(classifyNotam("RSC 02 6/6/6 DRY") === "runway", "RSC → RUNWAYS");
+assert(classifyNotam("ILS RWY 08L AND RWY 26R U/S") === "ifr_approach", "multi ILS still APPROACH");
+
 if (failed) {
   console.error(`\n${failed} assertion(s) failed`);
   process.exit(1);

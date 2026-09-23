@@ -18,12 +18,12 @@ export const NOTAM_GROUP_ORDER: NotamGroup[] = [
 ];
 
 export const NOTAM_GROUP_LABELS: Record<NotamGroup, string> = {
-  runway: "Runway closures / construction / shortening / restrictions",
-  taxiway: "Taxiway",
-  fuel: "Fuel / fueler",
-  ifr_approach: "IFR approach restrictions / limitations",
-  lighting: "Airport / approach lighting",
-  other: "Other (filtered out of primary view)",
+  runway: "RUNWAYS",
+  taxiway: "TAXIWAYS",
+  fuel: "FUEL",
+  ifr_approach: "APPROACH",
+  lighting: "LIGHTING",
+  other: "OTHER",
 };
 
 /** Exclude crane, birds, wildlife per requirements. */
@@ -54,7 +54,11 @@ export function shouldExcludeNotam(text: string): boolean {
   return EXCLUDE_PATTERNS.some((re) => re.test(text));
 }
 
+const RSC_RE = /\bRSC\b/i;
+
 export function classifyNotam(text: string): NotamGroup {
+  // Canadian runway surface condition reports belong with runways
+  if (RSC_RE.test(text)) return "runway";
   // IFR approach and lighting before runway: bare "RWY nn" must not steal ILS/ALSF NOTAMs
   if (IFR_RE.test(text)) return "ifr_approach";
   if (LIGHTING_RE.test(text)) return "lighting";

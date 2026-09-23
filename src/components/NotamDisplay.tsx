@@ -16,6 +16,11 @@ function tokenStyle(t: NotamDisplayToken, overlaps: boolean): CSSProperties {
     style.color = "#ef4444";
     return style;
   }
+  if (t.kind === "caution") {
+    style.fontWeight = 700;
+    style.color = "#f97316"; // orange: NOT AUTH, LDA/TODA/ASDA
+    return style;
+  }
   if (t.kind === "rsc" && t.rscLevel != null) {
     const c = rscColor(t.rscLevel);
     if (c) {

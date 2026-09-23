@@ -203,7 +203,7 @@ function NotamCards({
     <div className="space-y-4">
       <p className="text-xs text-slate-400">
         Bold = validity overlaps flight window (dep → +{winEndMin} min incl. +2h). Closures / ILS U/S in
-        bold red; RSC 5–6 green, 3–4 yellow, 1–2 red.
+        bold red; NOT AUTH and LDA/TODA/ASDA orange; RSC 5–6 green, 3–4 yellow, 1–2 red.
       </p>
       {airports.map((b) => (
         <article key={b.airport.icao} className="rounded-xl bg-slate-900/90 p-3 ring-1 ring-slate-800">
@@ -236,7 +236,7 @@ function NotamCards({
             })}
             {!NOTAM_GROUP_ORDER.some((g) => (b.notamsByGroup[g] || []).length) && (
               <p className="text-sm text-slate-500">
-                No grouped NOTAMs (runway / taxiway / fuel / IFR approach / lighting). Crane, birds, and
+                No grouped NOTAMs (RUNWAYS / TAXIWAYS / APPROACH / FUEL / LIGHTING). Crane, birds, and
                 wildlife are excluded.
               </p>
             )}

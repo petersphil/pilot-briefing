@@ -16,10 +16,10 @@ export const NOTAM_GROUP_ORDER: NotamGroupClient[] = [
 ];
 
 export const NOTAM_GROUP_LABELS: Record<NotamGroupClient, string> = {
-  runway: "Runway closures / construction / shortening / restrictions",
-  taxiway: "Taxiway",
-  fuel: "Fuel / fueler",
-  ifr_approach: "IFR approach restrictions / limitations",
-  lighting: "Airport / approach lighting",
-  other: "Other",
+  runway: "RUNWAYS",
+  taxiway: "TAXIWAYS",
+  fuel: "FUEL",
+  ifr_approach: "APPROACH",
+  lighting: "LIGHTING",
+  other: "OTHER",
 };

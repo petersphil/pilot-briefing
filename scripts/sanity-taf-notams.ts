@@ -135,6 +135,19 @@ const rsc2 = tokenizeNotamForDisplay("RSC2 RWY 16", true);
 assert(!!rsc2.find((t) => t.kind === "rsc" && t.rscLevel === 2), "RSC2 token");
 assert(rscColor(2) === "#ef4444", "RSC 2 → red");
 
+// Canadian: RSC <rwy> a/b/c — runway must NOT be coloured as RSC
+const cyeg = tokenizeNotamForDisplay("RSC 02 6/6/6 DRY, DRY, DRY", true);
+const cyegLevels = cyeg.filter((t) => t.kind === "rsc").map((t) => t.rscLevel);
+assert(
+  cyegLevels.join("/") === "6/6/6",
+  `RSC 02 6/6/6 thirds (got ${cyegLevels.join("/")})`
+);
+assert(
+  !cyeg.some((t) => t.kind === "rsc" && t.rscLevel === 2),
+  "runway 02 must not be an RSC level"
+);
+assert(cyegLevels.every((n) => rscColor(n!) === "#22c55e"), "RSC 02 6/6/6 → all green");
+
 const multi = tokenizeNotamForDisplay("RSC 5/3/1", true);
 const levels = multi.filter((t) => t.kind === "rsc").map((t) => t.rscLevel);
 assert(

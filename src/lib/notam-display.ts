@@ -58,8 +58,16 @@ export function rscColor(level: number): string | undefined {
 const HAZARD_RE =
   /\b(?:(?:RWY|RWYS|RUNWAYS?)\s+[\dA-Z]+(?:\s*\/\s*[\dA-Z]+)?\s+(?:CLSD|CLOSED)|(?:ILS|LOC|LDA|SDF)(?:\s+(?:RWY|RUNWAY)\s+[\dA-Z\/]+)?\s+(?:U\/S|UNSERVICEABLE)|(?:APPROACH|APCH|IAP|MISSED\s+APPROACH)\s+(?:U\/S|UNSERVICEABLE)|(?:U\/S|UNSERVICEABLE)\s+(?:APPROACH|APCH|IAP))\b/gi;
 
-/** RSC 5, RSC5, RSC 05/05/05, RSC 5/3/1 */
-const RSC_RE = /\bRSC\s*\d{1,2}(?:\s*\/\s*\d{1,2}){0,2}\b/gi;
+/**
+ * Canadian RSC form: `RSC 02 6/6/6 DRY…`
+ * Runway designator (02, 20, 12L, 12/30) is NOT a condition code.
+ * Condition thirds a/b/c are 1–6.
+ * Fallbacks: `RSC 5/3/1`, `RSC 6`, `RSC6`.
+ */
+const RSC_WITH_RWY_RE =
+  /\bRSC\s+(\d{2}[LCR]?(?:\s*\/\s*\d{2}[LCR]?)?)\s+(\d)\s*\/\s*(\d)\s*\/\s*(\d)\b/gi;
+const RSC_TRIPLET_RE = /\bRSC\s*(\d)\s*\/\s*(\d)\s*\/\s*(\d)\b/gi;
+const RSC_SINGLE_RE = /\bRSC\s*(\d)\b(?!\s*\/)/gi;
 
 interface SubPart {
   text: string;
@@ -84,38 +92,109 @@ function collectHazardSpans(text: string): Span[] {
   return spans;
 }
 
-function splitRscMatch(full: string): SubPart[] {
-  const parts: SubPart[] = [];
-  const re = /(RSC\s*)|(\/)|(\d{1,2})|(\s+)/gi;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(full)) !== null) {
-    if (m[1]) {
-      parts.push({ text: m[1], kind: "text" });
-    } else if (m[2]) {
-      parts.push({ text: m[2], kind: "text" });
-    } else if (m[3]) {
-      parts.push({ text: m[3], kind: "rsc", rscLevel: Number(m[3]) });
-    } else if (m[4]) {
-      parts.push({ text: m[4], kind: "text" });
-    }
+function tripletPartsFromAfter(after: string, a: string, b: string, c: string): SubPart[] {
+  const tm = after.match(/^(\s*)(\d)(\s*\/\s*)(\d)(\s*\/\s*)(\d)\s*$/);
+  if (tm) {
+    return [
+      { text: tm[1], kind: "text" },
+      { text: tm[2], kind: "rsc", rscLevel: Number(tm[2]) },
+      { text: tm[3], kind: "text" },
+      { text: tm[4], kind: "rsc", rscLevel: Number(tm[4]) },
+      { text: tm[5], kind: "text" },
+      { text: tm[6], kind: "rsc", rscLevel: Number(tm[6]) },
+    ];
   }
-  if (!parts.length) parts.push({ text: full, kind: "text" });
-  return parts;
+  return [
+    { text: a, kind: "rsc", rscLevel: Number(a) },
+    { text: "/", kind: "text" },
+    { text: b, kind: "rsc", rscLevel: Number(b) },
+    { text: "/", kind: "text" },
+    { text: c, kind: "rsc", rscLevel: Number(c) },
+  ];
 }
 
 function collectRscSpans(text: string): Span[] {
   const spans: Span[] = [];
-  const re = new RegExp(RSC_RE.source, "gi");
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    spans.push({
-      start: m.index,
-      end: m.index + m[0].length,
-      kind: "rsc",
-      parts: splitRscMatch(m[0]),
-    });
+  const covered: Array<{ start: number; end: number }> = [];
+  const overlaps = (s: number, e: number) =>
+    covered.some((c) => s < c.end && e > c.start);
+
+  // 1) RSC <rwy> a/b/c — e.g. RSC 02 6/6/6
+  {
+    const re = new RegExp(RSC_WITH_RWY_RE.source, "gi");
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      const start = m.index;
+      const end = start + m[0].length;
+      if (overlaps(start, end)) continue;
+      const rwy = m[1];
+      const rwyAt = m[0].toUpperCase().indexOf(rwy.toUpperCase());
+      const prefixLen = rwyAt + rwy.length;
+      const prefix = m[0].slice(0, prefixLen);
+      const after = m[0].slice(prefixLen);
+      spans.push({
+        start,
+        end,
+        kind: "rsc",
+        parts: [
+          { text: prefix, kind: "text" },
+          ...tripletPartsFromAfter(after, m[2], m[3], m[4]),
+        ],
+      });
+      covered.push({ start, end });
+    }
   }
-  return spans;
+
+  // 2) RSC a/b/c (no runway)
+  {
+    const re = new RegExp(RSC_TRIPLET_RE.source, "gi");
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      const start = m.index;
+      const end = start + m[0].length;
+      if (overlaps(start, end)) continue;
+      const labelMatch = m[0].match(/^RSC\s*/i);
+      const label = labelMatch ? labelMatch[0] : "RSC";
+      const after = m[0].slice(label.length);
+      const tm = after.match(/^(\d)(\s*\/\s*)(\d)(\s*\/\s*)(\d)\s*$/);
+      const parts: SubPart[] = [{ text: label, kind: "text" }];
+      if (tm) {
+        parts.push({ text: tm[1], kind: "rsc", rscLevel: Number(tm[1]) });
+        parts.push({ text: tm[2], kind: "text" });
+        parts.push({ text: tm[3], kind: "rsc", rscLevel: Number(tm[3]) });
+        parts.push({ text: tm[4], kind: "text" });
+        parts.push({ text: tm[5], kind: "rsc", rscLevel: Number(tm[5]) });
+      }
+      spans.push({ start, end, kind: "rsc", parts });
+      covered.push({ start, end });
+    }
+  }
+
+  // 3) RSC 6 / RSC6 single condition (not a runway designator)
+  {
+    const re = new RegExp(RSC_SINGLE_RE.source, "gi");
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      const start = m.index;
+      const end = start + m[0].length;
+      if (overlaps(start, end)) continue;
+      const labelMatch = m[0].match(/^RSC\s*/i);
+      const label = labelMatch ? labelMatch[0] : "RSC";
+      const digit = m[1];
+      spans.push({
+        start,
+        end,
+        kind: "rsc",
+        parts: [
+          { text: label, kind: "text" },
+          { text: digit, kind: "rsc", rscLevel: Number(digit) },
+        ],
+      });
+      covered.push({ start, end });
+    }
+  }
+
+  return spans.sort((a, b) => a.start - b.start);
 }
 
 function mergeSpans(hazard: Span[], rsc: Span[]): Span[] {
@@ -157,10 +236,7 @@ export function tokenizeNotamForDisplay(
         tokens.push({
           text: p.text,
           kind: p.kind,
-          bold:
-            overlapsWindow ||
-            p.kind === "hazard" ||
-            p.kind === "rsc",
+          bold: overlapsWindow || p.kind === "hazard" || p.kind === "rsc",
           rscLevel: p.rscLevel,
         });
       }

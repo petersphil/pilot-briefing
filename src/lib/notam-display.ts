@@ -132,12 +132,17 @@ function collectRscSpans(text: string): Span[] {
       const prefixLen = rwyAt + rwy.length;
       const prefix = m[0].slice(0, prefixLen);
       const after = m[0].slice(prefixLen);
+      const a = Number(m[2]);
+      const b = Number(m[3]);
+      const c = Number(m[4]);
+      // Lower RSC = worse; paint "RSC 02" with the worst third so the whole phrase reads as one colour band when uniform.
+      const worst = Math.min(a, b, c);
       spans.push({
         start,
         end,
         kind: "rsc",
         parts: [
-          { text: prefix, kind: "text" },
+          { text: prefix, kind: "rsc", rscLevel: worst },
           ...tripletPartsFromAfter(after, m[2], m[3], m[4]),
         ],
       });
@@ -157,7 +162,11 @@ function collectRscSpans(text: string): Span[] {
       const label = labelMatch ? labelMatch[0] : "RSC";
       const after = m[0].slice(label.length);
       const tm = after.match(/^(\d)(\s*\/\s*)(\d)(\s*\/\s*)(\d)\s*$/);
-      const parts: SubPart[] = [{ text: label, kind: "text" }];
+      const a = Number(m[1]);
+      const b = Number(m[2]);
+      const c = Number(m[3]);
+      const worst = Math.min(a, b, c);
+      const parts: SubPart[] = [{ text: label, kind: "rsc", rscLevel: worst }];
       if (tm) {
         parts.push({ text: tm[1], kind: "rsc", rscLevel: Number(tm[1]) });
         parts.push({ text: tm[2], kind: "text" });
@@ -186,7 +195,7 @@ function collectRscSpans(text: string): Span[] {
         end,
         kind: "rsc",
         parts: [
-          { text: label, kind: "text" },
+          { text: label, kind: "rsc", rscLevel: Number(digit) },
           { text: digit, kind: "rsc", rscLevel: Number(digit) },
         ],
       });

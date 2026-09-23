@@ -137,22 +137,37 @@ assert(rscColor(2) === "#ef4444", "RSC 2 → red");
 
 // Canadian: RSC <rwy> a/b/c — runway must NOT be coloured as RSC
 const cyeg = tokenizeNotamForDisplay("RSC 02 6/6/6 DRY, DRY, DRY", true);
-const cyegLevels = cyeg.filter((t) => t.kind === "rsc").map((t) => t.rscLevel);
+const cyegDigitLevels = cyeg
+  .filter((t) => t.kind === "rsc" && /^\d$/.test(t.text))
+  .map((t) => t.rscLevel);
 assert(
-  cyegLevels.join("/") === "6/6/6",
-  `RSC 02 6/6/6 thirds (got ${cyegLevels.join("/")})`
+  cyegDigitLevels.join("/") === "6/6/6",
+  `RSC 02 6/6/6 thirds (got ${cyegDigitLevels.join("/")})`
 );
 assert(
-  !cyeg.some((t) => t.kind === "rsc" && t.rscLevel === 2),
-  "runway 02 must not be an RSC level"
+  !cyeg.some((t) => t.kind === "rsc" && /^02$/.test(t.text.trim())),
+  "runway 02 must not be its own RSC token"
 );
-assert(cyegLevels.every((n) => rscColor(n!) === "#22c55e"), "RSC 02 6/6/6 → all green");
+assert(
+  cyeg.every((t) => t.kind !== "rsc" || rscColor(t.rscLevel!) === "#22c55e"),
+  "RSC 02 6/6/6 → entire phrase green"
+);
+assert(
+  cyeg.some((t) => t.text.includes("RSC") && t.kind === "rsc" && t.rscLevel === 6),
+  "RSC + runway prefix coloured with condition"
+);
 
 const multi = tokenizeNotamForDisplay("RSC 5/3/1", true);
-const levels = multi.filter((t) => t.kind === "rsc").map((t) => t.rscLevel);
+const levels = multi
+  .filter((t) => t.kind === "rsc" && /^\d$/.test(t.text))
+  .map((t) => t.rscLevel);
 assert(
-  levels[0] === 5 && levels[1] === 3 && levels[2] === 1,
+  levels.join("/") === "5/3/1",
   `RSC 5/3/1 thirds (got ${levels.join("/")})`
+);
+assert(
+  multi.some((t) => /^RSC/i.test(t.text) && t.kind === "rsc" && t.rscLevel === 1),
+  "RSC label uses worst third (1)"
 );
 assert(
   rscColor(5) === "#22c55e" && rscColor(3) === "#eab308" && rscColor(1) === "#ef4444",

@@ -209,6 +209,40 @@ assert(
 assert(classifyNotam("RSC 02 6/6/6 DRY") === "runway", "RSC → RUNWAYS");
 assert(classifyNotam("ILS RWY 08L AND RWY 26R U/S") === "ifr_approach", "multi ILS still APPROACH");
 
+{
+  const stale = parseRawTaf(
+    "TAF TAF CYUL 142040Z 1421/1524 30008KT P6SM BKN050",
+    "2026-09-23T21:45:00Z"
+  );
+  assert(
+    !!stale.validTimeFrom &&
+      new Date(stale.validTimeFrom * 1000).toISOString().startsWith("2026-09-14"),
+    `stale tgftp issue day stays Sep (got ${stale.validTimeFrom && new Date(stale.validTimeFrom * 1000).toISOString()})`
+  );
+  assert(/^TAF CYUL/.test(stale.normalized), "strip duplicate TAF keyword");
+  const fresh = parseRawTaf(
+    "TAF CYOW 231440Z 2315/2418 06010KT P6SM SKC",
+    "2026-09-23T21:45:00Z"
+  );
+  const dep = new Date("2026-09-23T16:00:00Z");
+  const snaps = buildTafSnapshots(
+    { icaoId: "CYOW", rawTAF: fresh.normalized, issueTime: "2026-09-23T14:40:00Z", fcsts: fresh.fcsts, validTimeFrom: fresh.validTimeFrom, validTimeTo: fresh.validTimeTo },
+    dep
+  );
+  assert(
+    !!snaps.dep?.period && snaps.dep.flightCategory !== "UNK",
+    `fresh CFPS-style TAF has dep period (got ${snaps.dep?.summary})`
+  );
+  const staleSnaps = buildTafSnapshots(
+    { icaoId: "CYUL", rawTAF: stale.normalized, issueTime: "2026-09-23T21:45:00Z", fcsts: stale.fcsts, validTimeFrom: stale.validTimeFrom, validTimeTo: stale.validTimeTo },
+    dep
+  );
+  assert(
+    !staleSnaps.dep?.period,
+    "expired TAF must not invent a dep period"
+  );
+}
+
 if (failed) {
   console.error(`\n${failed} assertion(s) failed`);
   process.exit(1);

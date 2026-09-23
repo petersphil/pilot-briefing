@@ -248,7 +248,13 @@ interface RawGroup {
 }
 
 function normalizeRaw(raw: string): string {
-  return raw.replace(/\r\n/g, "\n").replace(/\n\s+/g, " ").replace(/\s+/g, " ").trim();
+  return raw
+    .replace(/\r\n/g, "\n")
+    .replace(/\n\s+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^(?:TAF\s+)+/i, "TAF ")
+    .replace(/=\s*$/, "");
 }
 
 /**
@@ -295,7 +301,9 @@ export function parseRawTaf(
     }
   }
 
-  // Build reference date from issueTimeHint or issue Z group
+  // Build reference from bulletin DDHHMMZ anchored to calendar near "now"/hint.
+  // Do NOT use resolveDdHh here: day < hint-day would roll a stale "14" into next month
+  // when the file stamp is today's date (the tgftp CA stale-body bug).
   let ref = refFromIssue(issueTimeHint);
   if (issueZ) {
     const im = issueZ.match(/^(\d{2})(\d{2})(\d{2})Z$/i);
@@ -303,9 +311,19 @@ export function parseRawTaf(
       const day = +im[1];
       const hour = +im[2];
       const minute = +im[3];
-      // Anchor month/year from hint or "now", then set day/hour
-      const sec = resolveDdHh(day, hour, minute, ref);
-      ref = new Date(sec * 1000);
+      const anchor = Number.isNaN(ref.getTime()) ? new Date() : ref;
+      let year = anchor.getUTCFullYear();
+      let month = anchor.getUTCMonth();
+      const today = anchor.getUTCDate();
+      // Bulletin day far ahead of anchor day ⇒ previous month (e.g. 31 when today is 1)
+      if (day > today + 1) {
+        month -= 1;
+        if (month < 0) {
+          month = 11;
+          year -= 1;
+        }
+      }
+      ref = new Date(Date.UTC(year, month, day, hour, minute, 0));
     }
   }
 

@@ -55,6 +55,81 @@ function splitTgftpBody(text: string): { stamp?: string; body: string } {
   return { body: lines.join("\n").trim() };
 }
 
+
+/** Collapse duplicate TAF keywords NOAA sometimes prefixes ("TAF TAF CYUL…"). */
+function normalizeRawTaf(raw: string): string {
+  return raw
+    .replace(/\r\n/g, "\n")
+    .replace(/\n\s+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^(?:TAF\s+)+/i, "TAF ");
+}
+
+/** Bulletin issue group DDHHMMZ → ISO, anchored to calendar near `now` (not next month). */
+function issueZToIso(issueZ: string, now = new Date()): string | undefined {
+  const m = issueZ.trim().match(/^(\d{2})(\d{2})(\d{2})Z$/i);
+  if (!m) return undefined;
+  const day = +m[1];
+  const hour = +m[2];
+  const minute = +m[3];
+  let year = now.getUTCFullYear();
+  let month = now.getUTCMonth();
+  const today = now.getUTCDate();
+  // Day much ahead of today ⇒ previous month (e.g. 31 when today is 1)
+  if (day > today + 1) {
+    month -= 1;
+    if (month < 0) {
+      month = 11;
+      year -= 1;
+    }
+  }
+  return new Date(Date.UTC(year, month, day, hour, minute, 0)).toISOString();
+}
+
+/** Extract DDHHMMZ from raw TAF header. */
+function bulletinIssueZ(rawTAF: string): string | undefined {
+  const m = rawTAF.match(/\b([A-Z]{4})\s+(\d{6}Z)\b/i);
+  return m ? m[2].toUpperCase() : undefined;
+}
+
+/**
+ * True when bulletin validity end (DDHH of DDHH/DDHH) is clearly before ~now.
+ * Used to reject stale tgftp Canadian TAFs (file stamp fresh, body days old).
+ */
+function tafBulletinLooksStale(rawTAF: string, now = new Date()): boolean {
+  const m = rawTAF.match(/\b\d{6}Z\s+(\d{2})(\d{2})\/(\d{2})(\d{2})\b/i);
+  if (!m) return false;
+  const endDay = +m[3];
+  const endHour = +m[4];
+  const issueIso = (() => {
+    const iz = bulletinIssueZ(rawTAF);
+    return iz ? issueZToIso(iz, now) : undefined;
+  })();
+  const ref = issueIso ? new Date(issueIso) : now;
+  // Reuse same month-roll rules as issueZ: end day < issue day ⇒ next month
+  let year = ref.getUTCFullYear();
+  let month = ref.getUTCMonth();
+  const issueDay = ref.getUTCDate();
+  if (endDay < issueDay) {
+    month += 1;
+    if (month > 11) {
+      month = 0;
+      year += 1;
+    }
+  }
+  let h = endHour;
+  let add = 0;
+  if (h === 24) {
+    h = 0;
+    add = 1;
+  }
+  const endMs = Date.UTC(year, month, endDay, h, 0, 0) + add * 86400_000;
+  // Stale if validity ended more than 2 hours ago
+  return endMs < now.getTime() - 2 * 3600_000;
+}
+
+
 async function fetchMetarTgftp(icao: string): Promise<MetarData | null> {
   try {
     const res = await textFetch(`${TGFTP_METAR}/${icao}.TXT`);
@@ -95,15 +170,17 @@ async function fetchTafTgftp(icao: string): Promise<TafData | null> {
     const res = await textFetch(`${TGFTP_TAF}/${icao}.TXT`);
     if (!res.ok) return null;
     const text = await res.text();
-    const { stamp, body } = splitTgftpBody(text);
+    const { body } = splitTgftpBody(text);
     if (!body) return null;
-    // Collapse soft line wraps but keep readable spacing
-    const rawTAF = body.replace(/\n\s+/g, " ").replace(/\s+/g, " ").trim();
+    const rawTAF = normalizeRawTaf(body);
+    if (!rawTAF) return null;
+    // Prefer bulletin DDHHMMZ over file stamp (stamp can be fresh while body is days old)
+    const iz = bulletinIssueZ(rawTAF);
+    const issueTime = iz ? issueZToIso(iz) : undefined;
     return {
       icaoId: icao,
       rawTAF,
-      issueTime: stamp,
-      // No structured fcsts — BriefingResults shows raw TAF when periods missing
+      issueTime,
     };
   } catch {
     return null;
@@ -142,12 +219,15 @@ async function fetchTafCfps(icao: string): Promise<TafData | null> {
             ? String(e.text).trim()
             : "";
       if (!raw) continue;
-      const rawTAF = raw.replace(/\n\s+/g, " ").replace(/\s+/g, " ").trim();
+      const rawTAF = normalizeRawTaf(raw.replace(/=\s*$/, ""));
+      if (!rawTAF) continue;
+      const iz = bulletinIssueZ(rawTAF);
       return {
         icaoId: icao,
         rawTAF,
         issueTime:
-          e.startValidity != null ? String(e.startValidity) : undefined,
+          (iz && issueZToIso(iz)) ||
+          (e.startValidity != null ? String(e.startValidity) : undefined),
       };
     }
     return null;
@@ -213,15 +293,24 @@ async function fillTafsFromFallbacks(
   const missing = icaos.filter((icao) => !map.has(icao));
   await Promise.all(
     missing.map(async (icao) => {
-      const fromTgftp = await fetchTafTgftp(icao);
-      if (fromTgftp) {
-        map.set(icao, fromTgftp);
-        return;
-      }
-      // Native (and any leftover) Canadian stations: Nav Canada CFPS
+      // Canadian: CFPS first — NOAA tgftp often serves stale CA bulletins
+      // (fresh file stamp, body still on an old DDHHMMZ).
       if (isCanadianAirport(icao)) {
         const fromCfps = await fetchTafCfps(icao);
-        if (fromCfps) map.set(icao, fromCfps);
+        if (fromCfps) {
+          map.set(icao, fromCfps);
+          return;
+        }
+        const fromTgftp = await fetchTafTgftp(icao);
+        if (fromTgftp && !tafBulletinLooksStale(fromTgftp.rawTAF)) {
+          map.set(icao, fromTgftp);
+        }
+        return;
+      }
+
+      const fromTgftp = await fetchTafTgftp(icao);
+      if (fromTgftp && !tafBulletinLooksStale(fromTgftp.rawTAF)) {
+        map.set(icao, fromTgftp);
       }
     })
   );
@@ -255,7 +344,8 @@ export async function fetchMetars(icaos: string[]): Promise<Map<string, MetarDat
 }
 
 /**
- * TAF: on Capacitor native skip AWC; NOAA tgftp first, then CFPS for Canadian ICAOs.
+ * TAF: on Capacitor native skip AWC; Canadian ICAOs use Nav Canada CFPS first
+ * (tgftp CA files are often stale), then tgftp; other ICAOs use tgftp.
  * On server/browser try AWC first, then same fallbacks.
  * Never throws — always returns a Map (possibly empty). SSL verification stays on.
  */
@@ -287,8 +377,8 @@ export async function fetchTafs(icaos: string[]): Promise<Map<string, TafData>> 
  * Server/browser: AWC when TLS healthy, same fallbacks otherwise.
  */
 export const COVERAGE_NOTE =
-  "METAR/TAF on native apps use NOAA tgftp (tgftp.nws.noaa.gov; VATSIM for METAR) " +
-  "and Nav Canada CFPS TAF for Canadian ICAOs — aviationweather.gov is not called on device. " +
-  "On server/browser, AWC is tried first when TLS is healthy, then the same fallbacks. " +
+  "METAR on native apps: NOAA tgftp (+ VATSIM). TAF on native: Nav Canada CFPS for Canadian " +
+  "ICAOs first (NOAA tgftp CA TAF files are often stale), else NOAA tgftp — aviationweather.gov " +
+  "is not called on device. On server/browser, AWC is tried first when TLS is healthy, then the same fallbacks. " +
   "Worldwide station coverage including Canada and Caribbean. " +
   "NOTAMs: Canadian airports (iso_country CA) via NAV CANADA CFPS (no key); all other airports via SkyLink on RapidAPI (RAPIDAPI_KEY or device Settings key).";

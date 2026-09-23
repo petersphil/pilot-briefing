@@ -40,14 +40,17 @@ export function horizonTimes(departureUtc: Date) {
 /** Find the TAF forecast period governing a given instant (unix seconds). */
 export function periodAt(taf: TafData | null, atUnixSec: number): TafPeriod | null {
   if (!taf?.fcsts?.length) return null;
+  // Outside the bulletin validity → no period (do not recycle expired FM groups)
+  if (taf.validTimeTo != null && atUnixSec >= taf.validTimeTo) return null;
+  if (taf.validTimeFrom != null && atUnixSec < taf.validTimeFrom) return null;
   // Prefer non-PROB periods that contain the time; BECMG uses timeFrom→timeTo with timeBec
   const containing = taf.fcsts.filter(
     (p) => p.timeFrom <= atUnixSec && atUnixSec < p.timeTo
   );
   if (!containing.length) {
-    // If outside all periods, pick nearest previous
+    // Inside bulletin validity but between groups: nearest previous still in force
     const prev = [...taf.fcsts]
-      .filter((p) => p.timeFrom <= atUnixSec)
+      .filter((p) => p.timeFrom <= atUnixSec && (taf.validTimeTo == null || p.timeFrom < taf.validTimeTo))
       .sort((a, b) => b.timeFrom - a.timeFrom)[0];
     return prev || null;
   }

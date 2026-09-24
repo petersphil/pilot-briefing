@@ -57,7 +57,7 @@ export function TafRawDisplay({
     <div className="mt-2">
       <p className="mb-1 text-[10px] text-slate-500">
         Bold = flight window (dep → +{winEndMin} min incl. +2h). Ceiling/vis by FAA category;
-        wind 15–25 kt yellow, 26–37 amber, >37 red.
+        wind 15–25 kt yellow, 26–37 amber, {'>'}37 red.
       </p>
       <pre className="whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed">
         {tokens.map((t, i) => (

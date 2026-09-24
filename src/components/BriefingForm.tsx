@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 export interface BriefingFormValues {
   departure: string;
@@ -20,12 +20,20 @@ function defaultDepartureUtc(): string {
   return d.toISOString().slice(0, 16);
 }
 
+function scheduleIso(departureLocal: string): string {
+  return departureLocal.length === 16
+    ? `${departureLocal}:00.000Z`
+    : `${departureLocal}Z`;
+}
+
 export function BriefingForm({
   onSubmit,
   loading,
+  onScheduleChange,
 }: {
   onSubmit: (v: BriefingFormValues) => void;
   loading: boolean;
+  onScheduleChange?: (departureUtc: string, enrouteMinutes: number) => void;
 }) {
   const [departure, setDeparture] = useState("CYYJ");
   const [destination, setDestination] = useState("CYYT");
@@ -34,6 +42,14 @@ export function BriefingForm({
   const [enrouteHours, setEnrouteHours] = useState(6);
   const [enrouteMins, setEnrouteMins] = useState(0);
 
+  useEffect(() => {
+    if (!onScheduleChange) return;
+    onScheduleChange(
+      scheduleIso(departureLocal),
+      Math.max(0, enrouteHours * 60 + enrouteMins)
+    );
+  }, [departureLocal, enrouteHours, enrouteMins, onScheduleChange]);
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const alts = alternatesText
@@ -41,7 +57,7 @@ export function BriefingForm({
       .map((s) => s.trim())
       .filter(Boolean);
     // Treat datetime-local value as UTC
-    const iso = departureLocal.length === 16 ? `${departureLocal}:00.000Z` : `${departureLocal}Z`;
+    const iso = scheduleIso(departureLocal);
     onSubmit({
       departure: departure.trim(),
       destination: destination.trim(),

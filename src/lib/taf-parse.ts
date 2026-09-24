@@ -9,6 +9,7 @@ import {
   ceilingFromClouds,
   parseVisibilitySm,
 } from "./flightCategory";
+import { isWindGroupToken, parseWindGroup, type WindBand } from "./wind-display";
 
 export interface TafClause {
   /** Slice of the normalized raw TAF for this group */
@@ -592,13 +593,15 @@ export function periodOverlapsWindow(
 }
 
 /** Token kinds for rich TAF display */
-export type TafTokenKind = "vis" | "ceiling" | "text" | "space";
+export type TafTokenKind = "vis" | "ceiling" | "wind" | "text" | "space";
 
 export interface TafDisplayToken {
   text: string;
   kind: TafTokenKind;
   /** FAA category colour when kind is vis/ceiling and clause in window */
   category?: FlightCategory;
+  /** Wind colour band when kind is wind */
+  windBand?: WindBand | null;
   bold: boolean;
 }
 
@@ -731,6 +734,16 @@ function tokenizeClause(
         text: p,
         kind: "ceiling",
         category: bold ? cat : undefined,
+        bold,
+      });
+      continue;
+    }
+    if (isWindGroupToken(p)) {
+      const w = parseWindGroup(p);
+      tokens.push({
+        text: p,
+        kind: "wind",
+        windBand: w?.band ?? null,
         bold,
       });
       continue;

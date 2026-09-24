@@ -43,9 +43,10 @@ export function notamOverlapsFlightWindow(
   return start < win.to && end > win.from;
 }
 
-/** RSC colour: 5–6 green, 3–4 yellow, 1–2 red. */
+/** RSC colour: 6 green, 5 blue, 3–4 yellow, 1–2 red. */
 export function rscColor(level: number): string | undefined {
-  if (level === 5 || level === 6) return "#22c55e";
+  if (level === 6) return "#22c55e";
+  if (level === 5) return "#3b82f6";
   if (level === 3 || level === 4) return "#eab308";
   if (level === 1 || level === 2) return "#ef4444";
   return undefined;

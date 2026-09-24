@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CategoryBadge } from "./CategoryBadge";
 import { TafRawDisplay } from "./TafRawDisplay";
+import { MetarRawDisplay } from "./MetarRawDisplay";
 import { NotamDisplay } from "./NotamDisplay";
 import { AtisSheet } from "./AtisSheet";
 import { Tabs, type TabKey } from "./Tabs";
@@ -112,9 +113,7 @@ function MetarCards({
               onOpenAtis={atis ? () => onOpenAtis(atis) : undefined}
             />
             {b.metar ? (
-              <pre className="mt-3 whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-slate-200">
-                {b.metar.rawOb}
-              </pre>
+              <MetarRawDisplay rawOb={b.metar.rawOb} />
             ) : (
               <p className="mt-3 text-sm text-slate-500">No METAR available</p>
             )}
@@ -203,7 +202,7 @@ function NotamCards({
     <div className="space-y-4">
       <p className="text-xs text-slate-400">
         Bold = validity overlaps flight window (dep → +{winEndMin} min incl. +2h). Closures / ILS U/S in
-        bold red; NOT AUTH and LDA/TODA/ASDA orange; RSC 5–6 green, 3–4 yellow, 1–2 red.
+        bold red; NOT AUTH and LDA/TODA/ASDA orange; RSC 6 green, 5 blue, 3–4 yellow, 1–2 red.
       </p>
       {airports.map((b) => (
         <article key={b.airport.icao} className="rounded-xl bg-slate-900/90 p-3 ring-1 ring-slate-800">

@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import { FAA_COLORS } from "@/lib/flightCategory";
 import { tokenizeTafForDisplay, type TafDisplayToken } from "@/lib/taf-parse";
+import { windColor } from "@/lib/wind-display";
 import type { FlightCategory, TafData } from "@/lib/types";
 
 function tokenStyle(t: TafDisplayToken): CSSProperties {
@@ -20,6 +21,13 @@ function tokenStyle(t: TafDisplayToken): CSSProperties {
     style.fontWeight = t.bold ? 700 : 600;
     if (t.category === "MVFR") {
       style.textShadow = "0 0 4px rgba(0,0,0,0.9)";
+    }
+  }
+  if (t.kind === "wind") {
+    const c = windColor(t.windBand);
+    if (c) {
+      style.color = c;
+      style.fontWeight = 700;
     }
   }
   return style;
@@ -48,8 +56,8 @@ export function TafRawDisplay({
   return (
     <div className="mt-2">
       <p className="mb-1 text-[10px] text-slate-500">
-        Bold = flight window (dep → +{winEndMin} min incl. +2h). Ceiling/vis coloured by FAA
-        category in that window.
+        Bold = flight window (dep → +{winEndMin} min incl. +2h). Ceiling/vis by FAA category;
+        wind 15–25 kt yellow, 26–37 amber, >37 red.
       </p>
       <pre className="whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed">
         {tokens.map((t, i) => (

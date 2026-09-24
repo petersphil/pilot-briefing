@@ -8,6 +8,11 @@ import {
   rscColor,
   tokenizeNotamForDisplay,
 } from "../src/lib/notam-display";
+import {
+  parseWindGroup,
+  tokenizeMetarForDisplay,
+  windBandFromSpeeds,
+} from "../src/lib/wind-display";
 import { classifyNotam } from "../src/lib/notams";
 import { buildTafSnapshots, periodAt } from "../src/lib/taf";
 import {
@@ -170,7 +175,7 @@ assert(
   "RSC label uses worst third (1)"
 );
 assert(
-  rscColor(5) === "#22c55e" && rscColor(3) === "#eab308" && rscColor(1) === "#ef4444",
+  rscColor(5) === "#3b82f6" && rscColor(3) === "#eab308" && rscColor(1) === "#ef4444",
   "RSC multi colours"
 );
 
@@ -248,3 +253,19 @@ if (failed) {
   process.exit(1);
 }
 console.log("\nAll sanity checks passed.");
+
+// --- Wind colour bands ---
+assert(windBandFromSpeeds(14, null) == null, "14 kt no colour");
+assert(windBandFromSpeeds(15, null) === "yellow", "15 kt yellow");
+assert(windBandFromSpeeds(25, null) === "yellow", "25 kt yellow");
+assert(windBandFromSpeeds(18, 30) === "amber", "18G30 amber (gust)");
+assert(windBandFromSpeeds(26, null) === "amber", "26 kt amber");
+assert(windBandFromSpeeds(37, null) === "amber", "37 kt amber");
+assert(windBandFromSpeeds(38, null) === "red", "38 kt red");
+const g30 = parseWindGroup("34018G30KT");
+assert(!!g30 && g30.band === "amber", "34018G30KT → amber");
+const metarTok = tokenizeMetarForDisplay("METAR CYYC 241800Z 34018G30KT 10SM FEW050");
+assert(
+  metarTok.some((t) => t.kind === "wind" && t.windBand === "amber" && t.text.includes("34018G30")),
+  "METAR wind token amber"
+);

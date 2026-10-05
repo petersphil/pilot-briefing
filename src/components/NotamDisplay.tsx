@@ -1,12 +1,13 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { Fragment, type CSSProperties } from "react";
 import {
   notamOverlapsFlightWindow,
   rscColor,
   tokenizeNotamForDisplay,
   type NotamDisplayToken,
 } from "@/lib/notam-display";
+import { splitLearnTokens } from "@/lib/notam-learn";
 import type { NotamItem } from "@/lib/types";
 
 function tokenStyle(t: NotamDisplayToken, overlaps: boolean): CSSProperties {
@@ -43,10 +44,13 @@ export function NotamDisplay({
   notam,
   departureUtc,
   enrouteMinutes,
+  highlightNonStandard = false,
 }: {
   notam: NotamItem;
   departureUtc: string;
   enrouteMinutes: number;
+  /** Learn mode: paint tokens outside the fixed aviation list red. */
+  highlightNonStandard?: boolean;
 }) {
   const dep = new Date(departureUtc);
   const overlaps = notamOverlapsFlightWindow(notam, dep, enrouteMinutes);
@@ -58,11 +62,33 @@ export function NotamDisplay({
         overlaps ? "" : "opacity-80"
       }`}
     >
-      {tokens.map((t, i) => (
-        <span key={i} style={tokenStyle(t, overlaps)}>
-          {t.text}
-        </span>
-      ))}
+      {tokens.map((t, i) => {
+        if (!highlightNonStandard || t.kind !== "text") {
+          return (
+            <span key={i} style={tokenStyle(t, overlaps)}>
+              {t.text}
+            </span>
+          );
+        }
+        const parts = splitLearnTokens(t.text, notam.icao);
+        return (
+          <Fragment key={i}>
+            {parts.map((part, j) => (
+              <span
+                key={j}
+                style={
+                  part.nonStandard
+                    ? { ...tokenStyle(t, overlaps), color: "#ef4444", fontWeight: 700 }
+                    : tokenStyle(t, overlaps)
+                }
+                title={part.nonStandard ? "Non-standard term" : undefined}
+              >
+                {part.text}
+              </span>
+            ))}
+          </Fragment>
+        );
+      })}
     </pre>
   );
 }

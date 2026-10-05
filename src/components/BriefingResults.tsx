@@ -1,10 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CategoryBadge } from "./CategoryBadge";
 import { TafRawDisplay } from "./TafRawDisplay";
 import { MetarRawDisplay } from "./MetarRawDisplay";
 import { NotamDisplay } from "./NotamDisplay";
+import {
+  applyLearnToGroup,
+  directMark,
+  emptyLearnPrefs,
+  loadLearnPrefs,
+  nonStandardTokens,
+  saveLearnPrefs,
+  unmarkNotam,
+  voteNotam,
+  type LearnPrefs,
+  type LearnVote,
+} from "@/lib/notam-learn";
 import { AtisSheet } from "./AtisSheet";
 import { Tabs, type TabKey } from "./Tabs";
 import { NOTAM_GROUP_LABELS, NOTAM_GROUP_ORDER } from "@/lib/notams-client";
@@ -14,6 +26,7 @@ import type {
   AirportBriefing,
   BriefingResponse,
   FlightCategory,
+  NotamItem,
 } from "@/lib/types";
 
 function roleLabel(role: string) {
@@ -188,6 +201,80 @@ function TafCards({
   );
 }
 
+function LearnToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label="Learn"
+      onClick={onToggle}
+      className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ring-1 ${
+        on
+          ? "bg-cyan-500 text-slate-950 ring-cyan-400"
+          : "bg-slate-800 text-slate-300 ring-slate-700"
+      }`}
+    >
+      Learn
+    </button>
+  );
+}
+
+function VoteButtons({
+  mark,
+  onVote,
+}: {
+  mark: string | undefined;
+  onVote: (vote: LearnVote) => void;
+}) {
+  const base = "rounded-md px-2 py-0.5 font-bold ring-1";
+  return (
+    <div className="mt-1.5 flex items-center gap-1">
+      <button
+        type="button"
+        aria-label="Not applicable"
+        aria-pressed={mark === "na"}
+        onClick={() => onVote("na")}
+        className={`${base} ${
+          mark === "na"
+            ? "bg-slate-700 text-white ring-slate-500"
+            : "bg-slate-900 text-slate-300 ring-slate-700"
+        }`}
+      >
+        N/A
+      </button>
+      <button
+        type="button"
+        aria-label="More relevant"
+        title="More relevant"
+        aria-pressed={mark === "up"}
+        onClick={() => onVote("up")}
+        className={`${base} ${
+          mark === "up"
+            ? "bg-emerald-800 text-emerald-100 ring-emerald-600"
+            : "bg-slate-900 text-slate-300 ring-slate-700"
+        }`}
+      >
+        ↑
+      </button>
+      <button
+        type="button"
+        aria-label="Less relevant"
+        title="Less relevant"
+        aria-pressed={mark === "down"}
+        onClick={() => onVote("down")}
+        className={`${base} ${
+          mark === "down"
+            ? "bg-amber-800 text-amber-100 ring-amber-600"
+            : "bg-slate-900 text-slate-300 ring-slate-700"
+        }`}
+      >
+        ↓
+      </button>
+    </div>
+  );
+}
+
 function NotamCards({
   airports,
   departureUtc,
@@ -198,50 +285,124 @@ function NotamCards({
   enrouteMinutes: number;
 }) {
   const winEndMin = enrouteMinutes + 120;
+  const [prefs, setPrefs] = useState<LearnPrefs>(emptyLearnPrefs);
+  useEffect(() => {
+    setPrefs(loadLearnPrefs());
+  }, []);
+
+  function commit(next: LearnPrefs) {
+    setPrefs(next);
+    saveLearnPrefs(next);
+  }
+
+  const learnOn = prefs.learnOn;
+
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <LearnToggle on={learnOn} onToggle={() => commit({ ...prefs, learnOn: !learnOn })} />
+      </div>
       <p className="text-xs text-slate-400">
         Bold = validity overlaps flight window (dep → +{winEndMin} min incl. +2h). Closures / ILS U/S in
         bold red; NOT AUTH and LDA/TODA/ASDA orange; RSC 6 green, 5 blue, 3–4 yellow, 1–2 red.
       </p>
-      {airports.map((b) => (
-        <article key={b.airport.icao} className="rounded-xl bg-slate-900/90 p-3 ring-1 ring-slate-800">
-          <AirportHeader b={b} />
-          <div className="mt-3 space-y-3">
-            {NOTAM_GROUP_ORDER.map((g) => {
-              const list = b.notamsByGroup[g] || [];
-              if (!list.length) return null;
-              return (
-                <div key={g}>
-                  <h4 className="mb-1 text-[11px] font-bold uppercase tracking-wide text-amber-400/90">
-                    {NOTAM_GROUP_LABELS[g]}
-                  </h4>
-                  <ul className="space-y-2">
-                    {list.map((n) => (
+      {learnOn && (
+        <p className="text-[11px] leading-snug text-slate-500">
+          N/A hides a NOTAM and later ones with the same location or type. Up and down only reorder
+          inside each heading. Unusual words are red.
+        </p>
+      )}
+      {airports.map((b) => {
+        const hidden: NotamItem[] = [];
+        const groups = NOTAM_GROUP_ORDER.map((g) => {
+          const list = b.notamsByGroup[g] || [];
+          const applied = applyLearnToGroup(list, prefs, learnOn);
+          hidden.push(...applied.hidden);
+          return { g, visible: applied.visible, sourceCount: list.length };
+        });
+        const anySource = groups.some((g) => g.sourceCount > 0);
+        return (
+          <article key={b.airport.icao} className="rounded-xl bg-slate-900/90 p-3 ring-1 ring-slate-800">
+            <AirportHeader b={b} />
+            <div className="mt-3 space-y-3">
+              {groups.map(({ g, visible }) => {
+                if (!visible.length) return null;
+                return (
+                  <div key={g}>
+                    <h4 className="mb-1 text-[11px] font-bold uppercase tracking-wide text-amber-400/90">
+                      {NOTAM_GROUP_LABELS[g]}
+                    </h4>
+                    <ul className="space-y-2">
+                      {visible.map((n) => {
+                        const odd = learnOn && nonStandardTokens(n.text, n.icao).length > 0;
+                        return (
+                          <li
+                            key={n.id}
+                            className={`rounded-lg bg-slate-950/80 px-2.5 py-2 ring-1 ${
+                              odd ? "ring-red-700/80" : "ring-slate-800"
+                            }`}
+                          >
+                            <NotamDisplay
+                              notam={n}
+                              departureUtc={departureUtc}
+                              enrouteMinutes={enrouteMinutes}
+                              highlightNonStandard={learnOn}
+                            />
+                            {learnOn && (
+                              <VoteButtons
+                                mark={directMark(prefs, n)}
+                                onVote={(vote) => commit(voteNotam(prefs, n, vote))}
+                              />
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                );
+              })}
+              {learnOn && hidden.length > 0 && (
+                <details className="rounded-lg bg-slate-950/50 px-2.5 py-2 ring-1 ring-slate-800">
+                  <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                    Hidden ({hidden.length})
+                  </summary>
+                  <ul className="mt-2 space-y-2">
+                    {hidden.map((n) => (
                       <li
                         key={n.id}
                         className="rounded-lg bg-slate-950/80 px-2.5 py-2 ring-1 ring-slate-800"
                       >
+                        <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-amber-400/80">
+                          {NOTAM_GROUP_LABELS[n.group]}
+                        </div>
                         <NotamDisplay
                           notam={n}
                           departureUtc={departureUtc}
                           enrouteMinutes={enrouteMinutes}
+                          highlightNonStandard
                         />
+                        <button
+                          type="button"
+                          onClick={() => commit(unmarkNotam(prefs, n))}
+                          className="mt-1.5 rounded-md bg-slate-900 px-2 py-0.5 font-bold text-slate-200 ring-1 ring-slate-700"
+                        >
+                          Unmark
+                        </button>
                       </li>
                     ))}
                   </ul>
-                </div>
-              );
-            })}
-            {!NOTAM_GROUP_ORDER.some((g) => (b.notamsByGroup[g] || []).length) && (
-              <p className="text-sm text-slate-500">
-                No grouped NOTAMs (RUNWAYS / TAXIWAYS / APPROACH / FUEL / LIGHTING). Crane, birds, and
-                wildlife are excluded.
-              </p>
-            )}
-          </div>
-        </article>
-      ))}
+                </details>
+              )}
+              {!anySource && (
+                <p className="text-sm text-slate-500">
+                  No grouped NOTAMs (RUNWAYS / TAXIWAYS / APPROACH / FUEL / LIGHTING). Crane, birds, and
+                  wildlife are excluded.
+                </p>
+              )}
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }

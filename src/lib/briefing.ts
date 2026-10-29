@@ -1,4 +1,4 @@
-import { resolveLeg, sortWestToEast } from "./airports";
+import { resolveLeg, resolveList, sortWestToEast } from "./airports";
 import { categoryFromMetar } from "./flightCategory";
 import { groupNotams, fetchNotams, type NotamFetchOptions } from "./notams";
 import { buildTafSnapshots, horizonTimes } from "./taf";
@@ -13,15 +13,14 @@ export async function buildBriefing(
   options: BriefingOptions = {}
 ): Promise<BriefingResponse> {
   const warnings: string[] = [];
-  const { airports: resolved, errors } = resolveLeg(
-    req.departure,
-    req.destination,
-    req.alternates || []
-  );
+  const { airports: resolved, errors } = req.airports?.length
+    ? resolveList(req.airports)
+    : resolveLeg(req.departure || "", req.destination || "", req.alternates || []);
   warnings.push(...errors);
 
   if (!resolved.length) {
     return {
+      label: req.label,
       generatedAt: new Date().toISOString(),
       departureUtc: req.departureUtc,
       enrouteMinutes: req.enrouteMinutes,
@@ -78,6 +77,7 @@ export async function buildBriefing(
   });
 
   return {
+    label: req.label,
     generatedAt: new Date().toISOString(),
     departureUtc: depDate.toISOString(),
     enrouteMinutes: req.enrouteMinutes,

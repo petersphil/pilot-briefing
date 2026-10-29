@@ -103,6 +103,25 @@ export function resolveLeg(
   return { airports: out, errors };
 }
 
+/** Resolve a plain airport list (region mode), de-duplicated by ICAO. */
+export function resolveList(codes: string[]): { airports: ResolvedAirport[]; errors: string[] } {
+  const errors: string[] = [];
+  const out: ResolvedAirport[] = [];
+  const seen = new Set<string>();
+  for (const code of codes) {
+    if (!code || !code.trim()) continue;
+    const a = resolveCode(code);
+    if (!a) {
+      errors.push(`Could not resolve airport code: ${code}`);
+      continue;
+    }
+    if (seen.has(a.icao)) continue;
+    seen.add(a.icao);
+    out.push({ ...a, input: code.trim().toUpperCase(), role: "region" });
+  }
+  return { airports: out, errors };
+}
+
 /** Sort airports west→east by longitude (ascending = more west first). */
 export function sortWestToEast<T extends { lon: number; icao: string }>(
   list: T[]

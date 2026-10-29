@@ -29,6 +29,15 @@ import type {
   NotamItem,
 } from "@/lib/types";
 
+function RoleChip({ role }: { role: string }) {
+  if (role === "region") return null;
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${roleClass(role)}`}>
+      {roleLabel(role)}
+    </span>
+  );
+}
+
 function roleLabel(role: string) {
   if (role === "departure") return "DEP";
   if (role === "destination") return "DEST";
@@ -72,9 +81,7 @@ function AirportHeader({
     <div className="flex items-start justify-between gap-2">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${roleClass(b.airport.role)}`}>
-            {roleLabel(b.airport.role)}
-          </span>
+          <RoleChip role={b.airport.role} />
           <span className="font-mono text-lg font-bold text-white">{b.airport.icao}</span>
           {b.airport.iata && (
             <span className="font-mono text-xs text-slate-400">{b.airport.iata}</span>
@@ -169,9 +176,7 @@ function TafCards({
             <div className="flex items-start justify-between gap-2">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${roleClass(b.airport.role)}`}>
-                    {roleLabel(b.airport.role)}
-                  </span>
+                  <RoleChip role={b.airport.role} />
                   <span className="font-mono text-lg font-bold text-white">{b.airport.icao}</span>
                 </div>
                 <p className="mt-0.5 text-xs text-slate-400 line-clamp-1">{b.airport.name}</p>
@@ -413,29 +418,6 @@ export function BriefingResults({ data }: { data: BriefingResponse }) {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl bg-slate-900/60 p-3 ring-1 ring-slate-800">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="text-xs text-slate-400">Airports W→E</p>
-            <p className="font-mono text-sm text-cyan-300">
-              {data.sortedWestToEast.join(" → ") || "—"}
-            </p>
-          </div>
-          <div className="text-right text-[11px] text-slate-500">
-            <div>Dep {formatUtc(data.departureUtc)}</div>
-            <div>Enroute {data.enrouteMinutes} min</div>
-          </div>
-        </div>
-      </div>
-
-      {data.warnings.length > 0 && (
-        <div className="rounded-lg border border-amber-700/50 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
-          {data.warnings.map((w, i) => (
-            <p key={i}>⚠ {w}</p>
-          ))}
-        </div>
-      )}
-
       <Tabs active={tab} onChange={setTab} />
 
       <div role="tabpanel">
@@ -457,6 +439,14 @@ export function BriefingResults({ data }: { data: BriefingResponse }) {
           />
         )}
       </div>
+
+      {data.warnings.length > 0 && (
+        <div className="rounded-lg border border-amber-700/50 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
+          {data.warnings.map((w, i) => (
+            <p key={i}>⚠ {w}</p>
+          ))}
+        </div>
+      )}
 
       <p className="text-[10px] leading-relaxed text-slate-600">{data.coverageNote}</p>
       <p className="text-[10px] text-slate-600">

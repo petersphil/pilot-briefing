@@ -1,6 +1,6 @@
 export type FlightCategory = "VFR" | "MVFR" | "IFR" | "LIFR" | "UNK";
 
-export type AirportRole = "departure" | "destination" | "alternate";
+export type AirportRole = "departure" | "destination" | "alternate" | "region";
 
 export interface Airport {
   icao: string;
@@ -113,14 +113,19 @@ export interface TafSnapshot {
 }
 
 export interface BriefingRequest {
-  departure: string;
-  destination: string;
-  alternates: string[];
+  /** Region / list mode: brief these airports (no dep/dest roles). */
+  airports?: string[];
+  /** Header text for what is being briefed, e.g. "Western CA". */
+  label?: string;
+  departure?: string;
+  destination?: string;
+  alternates?: string[];
   departureUtc: string;
   enrouteMinutes: number;
 }
 
 export interface BriefingResponse {
+  label?: string;
   generatedAt: string;
   departureUtc: string;
   enrouteMinutes: number;

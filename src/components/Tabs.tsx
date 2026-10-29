@@ -8,6 +8,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "notams", label: "NOTAMs" },
 ];
 
+/** Persistent bottom bar for thumb switching. */
 export function Tabs({
   active,
   onChange,
@@ -16,30 +17,41 @@ export function Tabs({
   onChange: (k: TabKey) => void;
 }) {
   return (
-    <div
-      className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin"
+    <nav
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-800 px-2 pt-2"
+      style={{
+        backgroundColor: "rgba(2, 6, 23, 0.92)",
+        backdropFilter: "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))",
+      }}
       role="tablist"
       aria-label="Briefing products"
     >
-      {TABS.map((t) => {
-        const selected = active === t.key;
-        return (
-          <button
-            key={t.key}
-            role="tab"
-            aria-selected={selected}
-            type="button"
-            onClick={() => onChange(t.key)}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-              selected
-                ? "bg-cyan-500 text-slate-950 shadow"
-                : "bg-slate-800 text-slate-300 ring-1 ring-slate-700 hover:bg-slate-700"
-            }`}
-          >
-            {t.label}
-          </button>
-        );
-      })}
-    </div>
+      <div className="mx-auto grid max-w-lg grid-cols-3 gap-2">
+        {TABS.map((t) => {
+          const selected = active === t.key;
+          return (
+            <button
+              key={t.key}
+              role="tab"
+              aria-selected={selected}
+              type="button"
+              onClick={() => {
+                onChange(t.key);
+                window.scrollTo({ top: 0 });
+              }}
+              className={`rounded-xl py-3 text-sm font-bold transition ${
+                selected
+                  ? "bg-cyan-500 text-slate-950 shadow"
+                  : "bg-slate-800 text-slate-300 ring-1 ring-slate-700 active:bg-slate-700"
+              }`}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+    </nav>
   );
 }

@@ -16,12 +16,16 @@ export async function POST(req: NextRequest) {
           .split(/[\s,]+/)
           .map((s) => s.trim())
           .filter(Boolean);
+    const airports: string[] = Array.isArray(body.airports)
+      ? body.airports.map((a: unknown) => String(a).trim()).filter(Boolean)
+      : [];
+    const label = body.label ? String(body.label) : undefined;
     const departureUtc = String(body.departureUtc || "").trim();
     const enrouteMinutes = Number(body.enrouteMinutes ?? body.enrouteDurationMinutes ?? 0);
 
-    if (!departure || !destination) {
+    if (!airports.length && (!departure || !destination)) {
       return NextResponse.json(
-        { error: "departure and destination are required" },
+        { error: "airports[] (or departure and destination) are required" },
         { status: 400 }
       );
     }
@@ -31,6 +35,8 @@ export async function POST(req: NextRequest) {
 
     const result = await buildBriefing(
       {
+        airports,
+        label,
         departure,
         destination,
         alternates,
@@ -53,6 +59,6 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    usage: "POST JSON { departure, destination, alternates[], departureUtc, enrouteMinutes }",
+    usage: "POST JSON { airports[], label?, departureUtc, enrouteMinutes } (legacy: departure, destination, alternates[])",
   });
 }

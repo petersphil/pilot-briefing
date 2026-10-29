@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type TouchEvent } from "react";
 import { CategoryBadge } from "./CategoryBadge";
 import { TafRawDisplay } from "./TafRawDisplay";
 import { MetarRawDisplay } from "./MetarRawDisplay";
@@ -412,15 +412,44 @@ function NotamCards({
   );
 }
 
+const TAB_ORDER: TabKey[] = ["metars", "tafs", "notams"];
+
 export function BriefingResults({ data }: { data: BriefingResponse }) {
   const [tab, setTab] = useState<TabKey>("metars");
   const [atisLink, setAtisLink] = useState<AtisLink | null>(null);
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
+
+  // Swipe left/right on the briefing to move between METARs, TAFs and NOTAMs.
+  function onTouchEnd(e: TouchEvent) {
+    if (!touchStart) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStart.x;
+    const dy = t.clientY - touchStart.y;
+    setTouchStart(null);
+    if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.8) return;
+    const i = TAB_ORDER.indexOf(tab);
+    const next = TAB_ORDER[i + (dx < 0 ? 1 : -1)];
+    if (next) {
+      setTab(next);
+      window.scrollTo({ top: 0 });
+    }
+  }
 
   return (
     <div className="space-y-4">
       <Tabs active={tab} onChange={setTab} />
 
-      <div role="tabpanel">
+      <div
+        role="tabpanel"
+        onTouchStart={(e) => {
+          const t = e.touches[0];
+          const el = e.target as HTMLElement;
+          // Ignore swipes that start inside horizontally scrolling content.
+          if (el.closest("[data-hscroll], pre, table")) return setTouchStart(null);
+          setTouchStart({ x: t.clientX, y: t.clientY });
+        }}
+        onTouchEnd={onTouchEnd}
+      >
         {tab === "metars" && (
           <MetarCards airports={data.airports} onOpenAtis={setAtisLink} />
         )}
